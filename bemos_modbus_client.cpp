@@ -54,7 +54,7 @@ int main(int argc, char **argv){
 	 * parse commandline options
 	 */
 	{
-		cxxopts::Options options("bemos-modbus", "BeMoS one modbus application");
+		cxxopts::Options options("bemos-modbus-client", "BeMoS one Modbus client application");
 
 		options.add_options()
 			("version", "print version string")
@@ -68,7 +68,7 @@ int main(int argc, char **argv){
 			("suppress_syslog", "do not output syslog messages to stdout")
 			("o,listen", "modbus tcp listen port", cxxopts::value<int>(port))
 		;
-		
+
 		try {
 			auto result = options.parse(argc, argv);
 
@@ -78,7 +78,7 @@ int main(int argc, char **argv){
 			}
 
 			if(result.count("version")) {
-				std::cout << "bemos-modbus version: " << APP_VERSION << std::endl;
+				std::cout << "bemos-modbus-client version: " << APP_VERSION << std::endl;
 				return EXIT_SUCCESS;
 			}
 
@@ -105,7 +105,7 @@ int main(int argc, char **argv){
 		}
 	}
 
-	logfile.write(LOG_INFO, "starting bemos-modbus %s", APP_VERSION);
+	logfile.write(LOG_INFO, "starting bemos-modbus-client %s", APP_VERSION);
 
 	/*
 	 * Test IEEE 754
