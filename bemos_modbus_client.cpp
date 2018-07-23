@@ -68,40 +68,40 @@ int main(int argc, char **argv){
 			("suppress_syslog", "do not output syslog messages to stdout")
 			("o,listen", "modbus tcp listen port", cxxopts::value<int>(port))
 		;
-
+		
 		try {
-			options.parse(argc, argv);
+			auto result = options.parse(argc, argv);
+
+			if(result.count("help")) {
+				std::cout << options.help() << std::endl;
+				return EXIT_SUCCESS;
+			}
+
+			if(result.count("version")) {
+				std::cout << "bemos-modbus version: " << APP_VERSION << std::endl;
+				return EXIT_SUCCESS;
+			}
+
+			if(daemon) {
+				logfile.setEcho(false);
+				logfile.write(LOG_INFO, "start daemonized");
+			}
+
+			if(result.count("suppress_syslog")) {
+				logfile.setEcho(false);
+			}
+
+			if(result.count("verbose")) {
+				logfile.setMaxLogLevel(LOG_DEBUG);
+				logfile.write(LOG_INFO, "verbose output enabled");
+			}
+
+			if(result.count("password")) {
+				password = bestsens::netHelper::sha512(result["password"].as<std::string>());
+			}
 		} catch(const std::exception& e) {
 			logfile.write(LOG_CRIT, "%s", e.what());
 			return EXIT_FAILURE;
-		}
-
-		if(options.count("help")) {
-			std::cout << options.help() << std::endl;
-			return EXIT_SUCCESS;
-		}
-
-		if(options.count("version")) {
-			std::cout << "bemos-modbus version: " << APP_VERSION << std::endl;
-			return EXIT_SUCCESS;
-		}
-
-		if(daemon) {
-			logfile.setEcho(false);
-			logfile.write(LOG_INFO, "start daemonized");
-		}
-
-		if(options.count("suppress_syslog")) {
-			logfile.setEcho(false);
-		}
-
-		if(options.count("verbose")) {
-			logfile.setMaxLogLevel(LOG_DEBUG);
-			logfile.write(LOG_INFO, "verbose output enabled");
-		}
-
-		if(options.count("password")) {
-			password = bestsens::netHelper::sha512(options["password"].as<std::string>());
 		}
 	}
 
