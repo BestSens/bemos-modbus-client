@@ -53,12 +53,15 @@ float getFloat(const uint16_t* start) {
 
 int main(int argc, char **argv){
 	bool daemon = false;
-	int port = 502;
 
 	logfile.setMaxLogLevel(LOG_INFO);
 
 	std::string conn_target = "localhost";
 	std::string conn_port = "6450";
+
+	std::string mb_tcp_target = "192.168.2.230";
+	int mb_tcp_port = 502;
+
 	std::string username = std::string(LOGIN_USER);
 	std::string password = std::string(LOGIN_HASH);
 
@@ -78,7 +81,8 @@ int main(int argc, char **argv){
 			("username", "username used to connect", cxxopts::value<std::string>(username)->default_value(std::string(LOGIN_USER)))
 			("password", "plain text password used to connect", cxxopts::value<std::string>())
 			("suppress_syslog", "do not output syslog messages to stdout")
-			("o,listen", "modbus tcp listen port", cxxopts::value<int>(port))
+			("mb_tcp_client", "modbus tcp server", cxxopts::value<std::string>(mb_tcp_target)->default_value(mb_tcp_target))
+			("mb_tcp_port", "modbus tcp server port", cxxopts::value<int>(mb_tcp_port))
 		;
 
 		try {
@@ -146,7 +150,7 @@ int main(int argc, char **argv){
 		return EXIT_FAILURE;
 	}
 
-	modbus_t *ctx = modbus_new_tcp("192.168.2.230", port);
+	modbus_t *ctx = modbus_new_tcp(mb_tcp_target.c_str(), mb_tcp_port);
 
 	if(!ctx) {
 		logfile.write(LOG_CRIT, "failed to create modbus context, exiting");
@@ -194,11 +198,6 @@ int main(int argc, char **argv){
 		float shaft_speed = getFloat(reg + 5);
 		float temp = getFloat(reg + 7);
 
-		logfile.write(LOG_INFO, "date: %d", date);
-		logfile.write(LOG_INFO, "temp: %.2f", temp);
-		logfile.write(LOG_INFO, "cage_speed: %.2f", cage_speed);
-		logfile.write(LOG_INFO, "shaft_speed: %.2f", shaft_speed);
-
 		const json payload = {
 			{"name", "external_data"},
 			{"data", {
@@ -209,9 +208,9 @@ int main(int argc, char **argv){
 			}}
 		};
 
-		logfile.write(LOG_INFO, "updating external data: %s", payload.dump(2).c_str());
-
 		socket.send_command("new_data", j, payload);
+
+		syslog(LOG_DEBUG, "%s", payload.dump(2).c_str());
 	}
 
 	modbus_close(ctx);
