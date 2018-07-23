@@ -173,7 +173,7 @@ int main(int argc, char **argv){
 	 * register "external_data" algo
 	 */
 	json j;
-	socket.send_command("register_analysis", j, {{"name", "sensor_data"}});
+	socket.send_command("register_analysis", j, {{"name", "external_data"}});
 
 	bestsens::system_helper::systemd::ready();
 
@@ -200,7 +200,7 @@ int main(int argc, char **argv){
 		logfile.write(LOG_INFO, "shaft_speed: %.2f", shaft_speed);
 
 		const json payload = {
-			{"name", "sensor_data"},
+			{"name", "external_data"},
 			{"data", {
 				{"date", date},
 				{"temp", temp},
@@ -209,7 +209,7 @@ int main(int argc, char **argv){
 			}}
 		};
 
-		logfile.write(LOG_INFO, "updating sensor data: %s", payload.dump(2).c_str());
+		logfile.write(LOG_INFO, "updating external data: %s", payload.dump(2).c_str());
 
 		socket.send_command("new_data", j, payload);
 	}
