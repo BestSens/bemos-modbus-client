@@ -1,0 +1,19 @@
+{
+	"folders":
+	[
+		{
+			"path": ".",
+			"file_exclude_patterns": ["bemos_modbus_client", "gitrev*", "*.d"],
+			"binary_file_patterns": ["bemos_modbus_client"],
+			"folder_exclude_patterns": ["libs"]
+		},
+		{
+			"path": "libs"
+		}
+	],
+	"settings":
+	{
+			"tab_size": 4,
+			"translate_tabs_to_spaces": false
+	}
+}

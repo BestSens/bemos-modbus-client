@@ -1,0 +1,9 @@
+[submodule "libs/bone_helper"]
+	path = libs/bone_helper
+	url = ../bone_helper.git
+[submodule "libs/json"]
+	path = libs/json
+	url = https://github.com/nlohmann/json.git
+[submodule "libs/cxxopts"]
+	path = libs/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git

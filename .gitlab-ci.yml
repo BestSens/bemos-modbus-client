@@ -1,0 +1,117 @@
+image: docker.bestwiki/bone/docker-build-image:2.0.3
+
+stages:
+    - build
+    - build-image
+    - deploy
+
+build:arm:
+    before_script:
+        - git submodule sync --recursive
+        - git submodule update --init --recursive
+    stage: build
+    artifacts:
+        expire_in: 4 weeks
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_arm"
+        paths:
+            - bemos_modbus
+    script:
+        - source /opt/boneos/2.0.3/environment-setup-cortexa9hf-vfp-neon-poky-linux-gnueabi
+        - make systemd
+
+build:i686:
+    before_script:
+        - git submodule sync --recursive
+        - git submodule update --init --recursive
+    stage: build
+    artifacts:
+        expire_in: 4 weeks
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_i686"
+        paths:
+            - bemos_modbus_client
+            - Dockerfile
+    script:
+        - make
+
+deploy:arm:
+    stage: deploy
+    when: on_success
+    variables:
+        GIT_STRATEGY: none
+    only:
+        - tags
+    artifacts:
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_arm"
+        paths:
+            - bemos_modbus_client
+    script:
+        - echo '1'
+    dependencies:
+        - build:arm
+
+deploy:i686:
+    stage: deploy
+    when: on_success
+    variables:
+        GIT_STRATEGY: none
+    only:
+        - tags
+    artifacts:
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_i686"
+        paths:
+            - bemos_modbus_client
+    script:
+        - echo '1'
+    dependencies:
+        - build:i686
+
+build-image:
+    image: docker:latest
+    stage: build-image
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+        - docker build --pull -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME .
+        - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+    dependencies:
+        - build:i686
+
+release-image:
+    image: docker:latest
+    stage: deploy
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+        - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+        - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME $CI_REGISTRY_IMAGE:latest
+        - docker push $CI_REGISTRY_IMAGE:latest
+    only:
+        - tags
+    dependencies:
+        - build-image
+
+staging:
+    stage: deploy
+    when: manual
+    environment: staging
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - fab staging deploy_to_bone:bemos_modbus_client -f /root/fabfile.py
+        - fab staging restart_service:bemos-modbus-client -f /root/fabfile.py
+    dependencies:
+        - build:arm
+
+production:
+    stage: deploy
+    when: manual
+    environment: production
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - fab production deploy_to_bone:bemos_modbus_client -f /root/fabfile.py
+        - fab production restart_service:bemos-modbus-client -f /root/fabfile.py
+    dependencies:
+        - build:arm
