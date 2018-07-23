@@ -125,6 +125,27 @@ int main(int argc, char **argv){
 	if(!std::numeric_limits<float>::is_iec559)
 		logfile.write(LOG_WARNING, "application wasn't compiled with IEEE 754 standard, floating point values may be out of standard");
 
+	/*
+	 * open socket
+	 */
+	bestsens::jsonNetHelper socket(conn_target, conn_port);
+
+	/*
+	 * connect to socket
+	 */
+	if(socket.connect()) {
+		logfile.write(LOG_CRIT, "connection to BeMoS failed");
+		return EXIT_FAILURE;
+	}
+
+	/*
+	 * login
+	 */
+	if(!socket.login(username, password)) {
+		logfile.write(LOG_CRIT, "login to bemos failed");
+		return EXIT_FAILURE;
+	}
+
 	modbus_t *ctx = modbus_new_tcp("192.168.2.230", port);
 
 	if(!ctx) {
@@ -148,14 +169,20 @@ int main(int argc, char **argv){
 
 	bestsens::loopTimer timer(std::chrono::seconds(1), 0);
 
+	/*
+	 * register "external_data" algo
+	 */
+	json j;
+	socket.send_command("register_analysis", j, {{"name", "sensor_data"}});
+
 	bestsens::system_helper::systemd::ready();
 
 	while(1) {
 		timer.wait_on_tick();
 
-		uint16_t reg[26];
+		uint16_t reg[27];
 
-		int num = modbus_read_input_registers(ctx, 0, 26, reg);
+		int num = modbus_read_input_registers(ctx, 0, 27, reg);
 
 		if(num == -1) {
 			logfile.write(LOG_CRIT, "error reading registers, exiting: %s", modbus_strerror(errno));
@@ -171,6 +198,20 @@ int main(int argc, char **argv){
 		logfile.write(LOG_INFO, "temp: %.2f", temp);
 		logfile.write(LOG_INFO, "cage_speed: %.2f", cage_speed);
 		logfile.write(LOG_INFO, "shaft_speed: %.2f", shaft_speed);
+
+		const json payload = {
+			{"name", "sensor_data"},
+			{"data", {
+				{"date", date},
+				{"temp", temp},
+				{"cage_speed", cage_speed},
+				{"shaft_speed", shaft_speed}
+			}}
+		};
+
+		logfile.write(LOG_INFO, "updating sensor data: %s", payload.dump(2).c_str());
+
+		socket.send_command("new_data", j, payload);
 	}
 
 	modbus_close(ctx);
