@@ -190,7 +190,9 @@ int main(int argc, char **argv){
 
 		if(num == -1) {
 			logfile.write(LOG_CRIT, "error reading registers, exiting: %s", modbus_strerror(errno));
-			break;
+			modbus_close(ctx);
+			modbus_free(ctx);
+			return EXIT_FAILURE;
 		}
 
 		int date = getValue32(reg + 1);
