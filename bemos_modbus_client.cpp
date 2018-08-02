@@ -38,17 +38,39 @@ system_helper::LogManager logfile("bemos-modbus-client");
 uint16_t getValue(const uint16_t* start) {
 	if(start == nullptr)
 		throw std::invalid_argument("error out of bounds");
+
+	uint16_t val = ntohs(start[0]);
+
+	if(val == 0x8000)
+		throw std::runtime_error("value not set");
 	
-	return ntohs(start[0]);
+	return val;
 }
 
 uint32_t getValue32(const uint16_t* start) {
-	return (getValue(start) << 16) + getValue(start + 1);
+	uint32_t val;
+
+	try{
+		val = (getValue(start) << 16) + getValue(start + 1);
+	} catch(...) {
+		val = 0;
+	}
+	
+
+	return val;
 }
 
 float getFloat(const uint16_t* start) {
 	uint32_t data = getValue32(start);
-	return *reinterpret_cast<float*>(&data);
+	float val;
+
+	try {
+		val = *reinterpret_cast<float*>(&data);
+	} catch(...) {
+		val = NAN;
+	}
+	
+	return val;
 }
 
 int main(int argc, char **argv){
@@ -184,9 +206,9 @@ int main(int argc, char **argv){
 	while(1) {
 		timer.wait_on_tick();
 
-		uint16_t reg[27];
+		uint16_t reg[29];
 
-		int num = modbus_read_input_registers(ctx, 0, 27, reg);
+		int num = modbus_read_input_registers(ctx, 0, 29, reg);
 
 		if(num == -1) {
 			logfile.write(LOG_CRIT, "error reading registers, exiting: %s", modbus_strerror(errno));
@@ -196,17 +218,15 @@ int main(int argc, char **argv){
 		}
 
 		int date = getValue32(reg + 1);
-		float cage_speed = getFloat(reg + 3);
-		float shaft_speed = getFloat(reg + 5);
 		float temp = getFloat(reg + 7);
+		float vibration = getFloat(reg + 27);
 
 		const json payload = {
 			{"name", "external_data"},
 			{"data", {
 				{"date", date},
 				{"temp", temp},
-				{"cage_speed", cage_speed},
-				{"shaft_speed", shaft_speed}
+				{"vibration", vibration}
 			}}
 		};
 
