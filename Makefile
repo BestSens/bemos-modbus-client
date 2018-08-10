@@ -30,7 +30,7 @@ FORCE:
 gitrev.hpp.md5: gitrev.hpp
 	@md5sum $< | cmp -s $@ -; if test $$? -ne 0; then md5sum $< > $@; fi
 
-bemos_modbus_client.o: bemos_modbus_client.cpp version.hpp libs/bone_helper/system_helper.hpp libs/json/single_include/nlohmann/json.hpp libs/cxxopts/include/cxxopts.hpp gitrev.hpp.md5
+bemos_modbus_client.o: bemos_modbus_client.cpp version.hpp rio_exception.hpp libs/bone_helper/system_helper.hpp libs/json/single_include/nlohmann/json.hpp libs/cxxopts/include/cxxopts.hpp gitrev.hpp.md5
 	$(CXX) $(CPPFLAGS) -c $<
 
 clean:

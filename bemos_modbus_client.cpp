@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 
 #include "version.hpp"
+#include "rio_exception.hpp"
 #include "libs/cxxopts/include/cxxopts.hpp"
 #include "libs/bone_helper/loopTimer.hpp"
 #include "libs/json/single_include/nlohmann/json.hpp"
@@ -35,38 +36,42 @@ system_helper::LogManager logfile("bemos-modbus-client");
 #define USERID 1200
 #define GROUPID 880
 
-uint16_t getValue(const uint16_t* start) {
-	if(start == nullptr)
-		throw std::invalid_argument("error out of bounds");
+void check_errorcode(uint16_t offset, int16_t val) {
+	if(val >= 32512 || val <= -32512)
+		throw rio_exception(offset, val);
+}
 
-	uint16_t val = ntohs(start[0]);
+int16_t getValue(const uint16_t* start, uint16_t offset) {
+	if(start + offset == nullptr)
+		throw std::invalid_argument("out of bounds");
 
-	if(val == 0x8000)
-		throw std::runtime_error("value not set");
+	int16_t val = ntohs(start[offset]);
+	check_errorcode(offset, val);
 	
 	return val;
 }
 
-uint32_t getValue32(const uint16_t* start) {
-	uint32_t val;
+int32_t getValue32(const uint16_t* start, uint16_t offset) {
+	int32_t val;
 
 	try{
-		val = (getValue(start) << 16) + getValue(start + 1);
-	} catch(...) {
+		val = (getValue(start, offset) << 16) + getValue(start, offset + 1);
+	} catch(const std::exception& e) {
+		logfile.write(LOG_ERR, "error getting variable: %s", e.what());
 		val = 0;
 	}
-	
 
 	return val;
 }
 
-float getFloat(const uint16_t* start) {
-	uint32_t data = getValue32(start);
+float getFloat(const uint16_t* start, uint16_t offset) {
+	int32_t data = getValue32(start, offset);
 	float val;
 
 	try {
 		val = *reinterpret_cast<float*>(&data);
-	} catch(...) {
+	} catch(const std::exception& e) {
+		logfile.write(LOG_ERR, "error getting variable: %s", e.what());
 		val = NAN;
 	}
 	
@@ -217,14 +222,12 @@ int main(int argc, char **argv){
 			return EXIT_FAILURE;
 		}
 
-		int date = getValue32(reg + 1);
-		float temp = getFloat(reg + 7);
-		float vibration = getFloat(reg + 27);
+		float temp = getFloat(reg, 7);
+		float vibration = getFloat(reg, 27);
 
 		const json payload = {
 			{"name", "external_data"},
 			{"data", {
-				{"date", date},
 				{"temp", temp},
 				{"vibration", vibration}
 			}}
