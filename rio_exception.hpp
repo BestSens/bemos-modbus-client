@@ -8,7 +8,7 @@
 #ifndef RIO_EXCEPTION_HPP
 #define RIO_EXCEPTION_HPP
 
-#include <exception>
+#include <stdexcept>
 #include <sstream>
 #include <iomanip>
 
