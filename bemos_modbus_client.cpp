@@ -27,6 +27,7 @@
 #include "libs/bone_helper/system_helper.hpp"
 
 using namespace bestsens;
+using json = nlohmann::json;
 
 system_helper::LogManager logfile("bemos-modbus-client");
 
@@ -36,9 +37,25 @@ system_helper::LogManager logfile("bemos-modbus-client");
 #define USERID 1200
 #define GROUPID 880
 
+#define ADDR_INPUT_REGISTER_START			0x000C 
+#define ADDR_HOLDING_REGISTER_START			0x001E
+#define ADDR_INPUT_COILS_START				0x00C0 
+#define ADDR_OUTPUT_COILS_START				0x01E0
+
+const json mb_register_map = {
+	{{"parameter name", "pump_casing/sealed_medium/pressure"}, 						{"address offset", 19}},
+	{{"parameter name", "sealing_chamber/barrier_fluid/pressure"}, 					{"address offset", 20}},
+	{{"parameter name", "sealing_chamber/barrier_fluid/flow"}, 						{"address offset", 21}},
+	{{"parameter name", "tank/barrier_fluid/level_barrier_fluid"}, 					{"address offset", 22}},
+	{{"parameter name", "sealing_chamber/barrier_fluid/temp_inlet"}, 				{"address offset", 43}},
+	{{"parameter name", "sealing_chamber/barrier_fluid/temp_outlet"}, 				{"address offset", 44}},
+	{{"parameter name", "water_cooler/cooling_water_barrier_system/temp_inlet"},	{"address offset", 45}},
+	{{"parameter name", "water_cooler/cooling_water_barrier_system/temp_outlet"}, 	{"address offset", 46}}
+};
+
 void check_errorcode(uint16_t offset, int16_t val) {
 	if(val >= 32512 || val <= -32512)
-		throw rio_exception(offset, val);
+		throw rio_exception(ADDR_HOLDING_REGISTER_START + offset, val);
 }
 
 int16_t getValue(const uint16_t* start, uint16_t offset) {
@@ -52,29 +69,13 @@ int16_t getValue(const uint16_t* start, uint16_t offset) {
 }
 
 int32_t getValue32(const uint16_t* start, uint16_t offset) {
-	int32_t val;
-
-	try{
-		val = (getValue(start, offset) << 16) + getValue(start, offset + 1);
-	} catch(const std::exception& e) {
-		logfile.write(LOG_ERR, "error getting variable: %s", e.what());
-		val = 0;
-	}
-
+	int32_t val = (getValue(start, offset) << 16) + getValue(start, offset + 1);
 	return val;
 }
 
 float getFloat(const uint16_t* start, uint16_t offset) {
 	int32_t data = getValue32(start, offset);
-	float val;
-
-	try {
-		val = *reinterpret_cast<float*>(&data);
-	} catch(const std::exception& e) {
-		logfile.write(LOG_ERR, "error getting variable: %s", e.what());
-		val = NAN;
-	}
-	
+	float val = *reinterpret_cast<float*>(&data);
 	return val;
 }
 
@@ -211,9 +212,9 @@ int main(int argc, char **argv){
 	while(1) {
 		timer.wait_on_tick();
 
-		uint16_t reg[29];
+		uint16_t reg[128];
 
-		int num = modbus_read_input_registers(ctx, 0, 29, reg);
+		int num = modbus_read_registers(ctx, ADDR_HOLDING_REGISTER_START, 50, reg);
 
 		if(num == -1) {
 			logfile.write(LOG_CRIT, "error reading registers, exiting: %s", modbus_strerror(errno));
@@ -222,15 +223,24 @@ int main(int argc, char **argv){
 			return EXIT_FAILURE;
 		}
 
-		float temp = getFloat(reg, 7);
-		float vibration = getFloat(reg, 27);
+		json attribute_data = {
+			{"date", time(NULL)}
+		};
+
+		for(auto e : mb_register_map) {
+			try {
+				std::string parameter = e["parameter name"];
+				int address_offset = e["address offset"];
+
+				attribute_data[parameter] = getValue(reg, address_offset);
+			} catch(const std::exception& e) {
+				logfile.write(LOG_ERR, "error getting value: %s", e.what());
+			}
+		}
 
 		const json payload = {
 			{"name", "external_data"},
-			{"data", {
-				{"temp", temp},
-				{"vibration", vibration}
-			}}
+			{"data", attribute_data}
 		};
 
 		socket.send_command("new_data", j, payload);
