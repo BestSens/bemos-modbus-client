@@ -47,14 +47,23 @@ system_helper::LogManager logfile("bemos-modbus-client");
 #define CONV_PERCENTAGE	2
 
 const json mb_register_map = {
-	{{"parameter name", "pump_casing/sealed_medium/pressure"}, 						{"address offset", 19},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "sealing_chamber/barrier_fluid/pressure"}, 					{"address offset", 20},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "sealing_chamber/barrier_fluid/flow"}, 						{"address offset", 21},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "tank/barrier_fluid/level_barrier_fluid"}, 					{"address offset", 22},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "sealing_chamber/barrier_fluid/temp_inlet"}, 				{"address offset", 43},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "sealing_chamber/barrier_fluid/temp_outlet"}, 				{"address offset", 44},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "water_cooler/cooling_water_barrier_system/temp_inlet"},	{"address offset", 45},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "water_cooler/cooling_water_barrier_system/temp_outlet"}, 	{"address offset", 46},	{"conversion", CONV_TEMP}}
+	{{"parameter name", "RIO_AM0"}, {"address offset", 19},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM1"}, {"address offset", 20},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM2"}, {"address offset", 21},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM3"}, {"address offset", 22},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM4"}, {"address offset", 23},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM5"}, {"address offset", 24},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM6"}, {"address offset", 25},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM7"}, {"address offset", 26},	{"conversion", CONV_PERCENTAGE}},
+
+	{{"parameter name", "RIO_TM0"}, {"address offset", 43},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM1"}, {"address offset", 44},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM2"},	{"address offset", 45},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM3"}, {"address offset", 46},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM4"}, {"address offset", 47},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM5"}, {"address offset", 48},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM6"}, {"address offset", 49},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM7"}, {"address offset", 50},	{"conversion", CONV_TEMP}}
 };
 
 void check_errorcode(uint16_t offset, int16_t val) {
@@ -292,11 +301,19 @@ int main(int argc, char **argv){
 			reg[20] = pressure_to_register_value(6);
 			reg[21] = flow_to_register_value(15);
 			reg[22] = percentage_to_register_value(0.89);
+			reg[23] = 0x8006;
+			reg[24] = 0x8006;
+			reg[25] = 0x8006;
+			reg[26] = 0x8001;
 
 			reg[43] = temperature_to_register_value(50);
 			reg[44] = temperature_to_register_value(51);
 			reg[45] = temperature_to_register_value(52);
 			reg[46] = temperature_to_register_value(53);
+			reg[47] = 0x8006;
+			reg[48] = 0x8001;
+			reg[49] = 0x8006;
+			reg[50] = 0x8006;
 
 			num = 50;
 		}
@@ -329,8 +346,13 @@ int main(int argc, char **argv){
 				}
 
 				attribute_data[parameter] = value;
-			} catch(const std::exception& e) {
-				logfile.write(LOG_ERR, "error getting value: %s", e.what());
+			} catch(const rio_exception& err) {
+				std::string parameter = e["parameter name"];
+				int address_offset = e["address offset"];
+
+				attribute_data[parameter] = err.getErrorCode();
+			} catch(const std::exception& err) {
+				logfile.write(LOG_ERR, "error getting value: %s", err.what());
 			}
 		}
 
