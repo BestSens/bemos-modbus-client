@@ -350,7 +350,10 @@ int main(int argc, char **argv){
 				std::string parameter = e["parameter name"];
 				int address_offset = e["address offset"];
 
-				attribute_data[parameter] = err.getErrorCode();
+				std::ostringstream error_output;
+				error_output << err.getErrorMessage() << " (0x" << std::setw(4) << std::hex << err.getErrorCode() << ")";
+
+				attribute_data[parameter] = error_output.str();
 			} catch(const std::exception& err) {
 				logfile.write(LOG_ERR, "error getting value: %s", err.what());
 			}
