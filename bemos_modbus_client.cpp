@@ -62,7 +62,8 @@ int16_t getValue(const uint16_t* start, uint16_t offset) {
 	if(start + offset == nullptr)
 		throw std::invalid_argument("out of bounds");
 
-	int16_t val = ntohs(start[offset]);
+	int16_t val = start[offset];
+	//int16_t val = ntohs(start[offset]);
 	check_errorcode(offset, val);
 	
 	return val;
