@@ -317,7 +317,7 @@ int main(int argc, char **argv){
 				double value;
 
 				switch(conversion) {
-					case CONV_CURRENT: value = convert_register_value_to_current(reg_value); break;
+					case CONV_CURRENT: value = (convert_register_value_to_current(reg_value)-4)/16; break;
 					case CONV_TEMP: value = register_value_to_temperature(reg_value); break;
 					default: value = reg_value;
 				}
