@@ -35,6 +35,10 @@ class rio_exception : public std::runtime_error {
 			return this->errorcode;
 		}
 
+		std::string getErrorMessage() const {
+			return getMessageFromCode(this->errorcode);
+		}
+
 		static std::string getMessageFromCode(uint16_t errorcode) {
 			if(errorcode == 0x7FFF || errorcode == 0x8001) return "short circuit";
 			if(errorcode == 0x7FFA || errorcode == 0x8006) return "open circuit";
