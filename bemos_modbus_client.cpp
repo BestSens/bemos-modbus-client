@@ -37,19 +37,20 @@ system_helper::LogManager logfile("bemos-modbus-client");
 #define USERID 1200
 #define GROUPID 880
 
-#define ADDR_INPUT_REGISTER_START			0x000C 
-#define ADDR_HOLDING_REGISTER_START			0x001E
-#define ADDR_INPUT_COILS_START				0x00C0 
-#define ADDR_OUTPUT_COILS_START				0x01E0
+#define ADDR_INPUT_REGISTER_START		0x000C 
+#define ADDR_HOLDING_REGISTER_START		0x001E
+#define ADDR_INPUT_COILS_START			0x00C0 
+#define ADDR_OUTPUT_COILS_START			0x01E0
 
 #define CONV_CURRENT 	0
 #define CONV_TEMP		1
+#define CONV_PERCENTAGE	2
 
 const json mb_register_map = {
-	{{"parameter name", "pump_casing/sealed_medium/pressure"}, 						{"address offset", 19},	{"conversion", CONV_CURRENT}},
-	{{"parameter name", "sealing_chamber/barrier_fluid/pressure"}, 					{"address offset", 20},	{"conversion", CONV_CURRENT}},
-	{{"parameter name", "sealing_chamber/barrier_fluid/flow"}, 						{"address offset", 21},	{"conversion", CONV_CURRENT}},
-	{{"parameter name", "tank/barrier_fluid/level_barrier_fluid"}, 					{"address offset", 22},	{"conversion", CONV_CURRENT}},
+	{{"parameter name", "pump_casing/sealed_medium/pressure"}, 						{"address offset", 19},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "sealing_chamber/barrier_fluid/pressure"}, 					{"address offset", 20},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "sealing_chamber/barrier_fluid/flow"}, 						{"address offset", 21},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "tank/barrier_fluid/level_barrier_fluid"}, 					{"address offset", 22},	{"conversion", CONV_PERCENTAGE}},
 	{{"parameter name", "sealing_chamber/barrier_fluid/temp_inlet"}, 				{"address offset", 43},	{"conversion", CONV_TEMP}},
 	{{"parameter name", "sealing_chamber/barrier_fluid/temp_outlet"}, 				{"address offset", 44},	{"conversion", CONV_TEMP}},
 	{{"parameter name", "water_cooler/cooling_water_barrier_system/temp_inlet"},	{"address offset", 45},	{"conversion", CONV_TEMP}},
@@ -240,6 +241,10 @@ int main(int argc, char **argv){
 		return interpolate<double>(0x0000, 0x6C00, value, 4, 20);
 	};
 
+	auto convert_register_value_to_percentage = [&](uint16_t value) -> double {
+		return interpolate<double>(0x0000, 0x6C00, value, 0, 1);
+	};
+
 	auto convert_current_to_value = [&](double value, double from, double to) -> double {
 		return interpolate<double>(4, 20, value, from, to);
 	};
@@ -317,7 +322,8 @@ int main(int argc, char **argv){
 				double value;
 
 				switch(conversion) {
-					case CONV_CURRENT: value = (convert_register_value_to_current(reg_value)-4)/16; break;
+					case CONV_PERCENTAGE: value = convert_register_value_to_percentage(reg_value); break;
+					case CONV_CURRENT: value = convert_register_value_to_current(reg_value); break;
 					case CONV_TEMP: value = register_value_to_temperature(reg_value); break;
 					default: value = reg_value;
 				}
