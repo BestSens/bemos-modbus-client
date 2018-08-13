@@ -266,8 +266,6 @@ int main(int argc, char **argv){
 		// convert to current
 		double current = convert_value_to_current(percentage, 0, 1);
 
-		std::cout << current << " mA - 0x" << std::setw(4) << std::hex << interpolate<uint16_t>(4, 20, current, 0x0000, 0x6C00) << std::endl;
-
 		// convert to register value
 		return interpolate<uint16_t>(4, 20, current, 0x0000, 0x6C00);
 	};
@@ -312,7 +310,6 @@ int main(int argc, char **argv){
 				int conversion = e["conversion"];
 
 				uint16_t reg_value = getValue(reg, address_offset);
-				logfile.write(LOG_INFO, "reg_value[%s]: 0x%X (%d)", parameter.c_str(), reg_value, reg_value);
 				double value;
 
 				switch(conversion) {
