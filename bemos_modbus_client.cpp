@@ -155,6 +155,10 @@ int main(int argc, char **argv){
 			if(result.count("password")) {
 				password = bestsens::netHelper::sha512(result["password"].as<std::string>());
 			}
+
+			if(fake) {
+				logfile.write(LOG_INFO, "fake mode enabled");
+			}
 		} catch(const std::exception& e) {
 			logfile.write(LOG_CRIT, "%s", e.what());
 			return EXIT_FAILURE;
