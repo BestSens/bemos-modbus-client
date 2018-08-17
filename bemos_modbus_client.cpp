@@ -102,14 +102,23 @@ _NumericType interpolate(double from, double to, double value, _NumericType int_
 int main(int argc, char **argv){
 	bool daemon = false;
 	bool fake = false;
+	bool skip_bemos = false;
 
 	logfile.setMaxLogLevel(LOG_INFO);
 
 	std::string conn_target = "localhost";
 	std::string conn_port = "6450";
 
+	std::string mb_protocol = "tcp";
 	std::string mb_tcp_target = "192.168.2.230";
 	int mb_tcp_port = 502;
+	
+	std::string mb_rtu_serialport = "/dev/ttyS1";
+	int mb_rtu_baud = 9600;
+	std::string mb_rtu_parity = "N";
+	int mb_rtu_databits = 8;
+	int mb_rtu_stopbits = 1;
+	int mb_rtu_slave = 1;
 
 	std::string username = std::string(LOGIN_USER);
 	std::string password = std::string(LOGIN_HASH);
@@ -132,7 +141,15 @@ int main(int argc, char **argv){
 			("suppress_syslog", "do not output syslog messages to stdout")
 			("mb_tcp_client", "modbus tcp server", cxxopts::value<std::string>(mb_tcp_target)->default_value(mb_tcp_target))
 			("mb_tcp_port", "modbus tcp server port", cxxopts::value<int>(mb_tcp_port))
+			("mb_rtu_serialport", "modbus serial port", cxxopts::value<std::string>(mb_rtu_serialport))
+			("mb_rtu_baud", "modbus serial baudrate", cxxopts::value<int>(mb_rtu_baud)->default_value(std::to_string(mb_rtu_baud)))
+			("mb_rtu_parity", "modbus serial parity: none (N), even (E), odd (O)", cxxopts::value<std::string>(mb_rtu_parity)->default_value(mb_rtu_parity))
+			("mb_rtu_databits", "modbus serial data bits", cxxopts::value<int>(mb_rtu_databits)->default_value(std::to_string(mb_rtu_databits)))
+			("mb_rtu_stopbits", "modbus serial stop bits", cxxopts::value<int>(mb_rtu_stopbits)->default_value(std::to_string(mb_rtu_stopbits)))
+			("mb_rtu_slave", "modbus serial slave address", cxxopts::value<int>(mb_rtu_slave)->default_value(std::to_string(mb_rtu_slave)))
+			("mb_protocol", "can be either: rtu or tcp", cxxopts::value<std::string>(mb_protocol)->default_value(mb_protocol))
 			("fake", "fake data", cxxopts::value<bool>(fake))
+			("skip_bemos", "do not use bemos", cxxopts::value<bool>(skip_bemos))
 		;
 
 		try {
@@ -169,6 +186,22 @@ int main(int argc, char **argv){
 			if(fake) {
 				logfile.write(LOG_INFO, "fake mode enabled");
 			}
+
+			if(skip_bemos)
+			{
+				logfile.write(LOG_INFO, "don't use bemos");
+			}
+
+			// todo: check modbus rtu configuration
+			if(mb_protocol.compare("tcp") == 0)
+			{
+				logfile.write(LOG_INFO, "use modbus_tcp with ip = %s & port = %i", mb_tcp_target.c_str(), mb_tcp_port);
+			}
+
+			if(mb_protocol.compare("rtu") == 0)
+			{
+				logfile.write(LOG_INFO, "use modbus_rtu with device = %s, baudrate = %i, parity = %s, data bits = %i, stop bits = %i & slave address = %i", mb_rtu_serialport.c_str(), mb_rtu_baud, mb_rtu_parity.c_str(), mb_rtu_databits, mb_rtu_stopbits, mb_rtu_slave);
+			}
 		} catch(const std::exception& e) {
 			logfile.write(LOG_CRIT, "%s", e.what());
 			return EXIT_FAILURE;
@@ -186,28 +219,43 @@ int main(int argc, char **argv){
 	/*
 	 * open socket
 	 */
-	bestsens::jsonNetHelper socket(conn_target, conn_port);
+	bestsens::jsonNetHelper* socket;
 
-	/*
-	 * connect to socket
-	 */
-	if(socket.connect()) {
-		logfile.write(LOG_CRIT, "connection to BeMoS failed");
-		return EXIT_FAILURE;
+	if(!skip_bemos)
+	{	
+		socket = new bestsens::jsonNetHelper(conn_target, conn_port);
+
+		/*
+		 * connect to socket
+		 */
+		if(socket->connect()) {
+			logfile.write(LOG_CRIT, "connection to BeMoS failed");
+			return EXIT_FAILURE;
+		}
+
+		/*
+		 * login
+		 */
+		if(!socket->login(username, password)) {
+			logfile.write(LOG_CRIT, "login to bemos failed");
+			return EXIT_FAILURE;
+		}
 	}
 
-	/*
-	 * login
-	 */
-	if(!socket.login(username, password)) {
-		logfile.write(LOG_CRIT, "login to bemos failed");
-		return EXIT_FAILURE;
-	}
-
-	modbus_t *ctx = modbus_new_tcp(mb_tcp_target.c_str(), mb_tcp_port);
+	modbus_t *ctx;
+	if(mb_protocol.compare("tcp") == 0)
+		ctx = modbus_new_tcp(mb_tcp_target.c_str(), mb_tcp_port);
+	else
+		ctx = modbus_new_rtu(mb_rtu_serialport.c_str(), mb_rtu_baud, mb_rtu_parity.front(), mb_rtu_databits, mb_rtu_stopbits);
 
 	if(!ctx) {
 		logfile.write(LOG_CRIT, "failed to create modbus context, exiting");
+		return EXIT_FAILURE;
+	}
+
+	if(0 != modbus_set_slave(ctx, mb_rtu_slave))
+	{
+		logfile.write(LOG_CRIT, "could not set slave address to %i", mb_rtu_slave);
 		return EXIT_FAILURE;
 	}
 
@@ -229,11 +277,14 @@ int main(int argc, char **argv){
 
 	bestsens::loopTimer timer(std::chrono::seconds(1), 0);
 
-	/*
-	 * register "external_data" algo
-	 */
 	json j;
-	socket.send_command("register_analysis", j, {{"name", "external_data"}});
+	if(!skip_bemos)
+	{
+		/*
+		 * register "external_data" algo
+		 */
+		socket->send_command("register_analysis", j, {{"name", "external_data"}});
+	}
 
 	bestsens::system_helper::systemd::ready();
 
@@ -295,7 +346,7 @@ int main(int argc, char **argv){
 
 		int num;
 		if(!fake) {
-			num = modbus_read_registers(ctx, ADDR_HOLDING_REGISTER_START, 50, reg);
+			num = modbus_read_input_registers(ctx, ADDR_INPUT_REGISTER_START, 50, reg);
 		} else {
 			reg[19] = pressure_to_register_value(5);
 			reg[20] = pressure_to_register_value(6);
@@ -364,13 +415,18 @@ int main(int argc, char **argv){
 			{"data", attribute_data}
 		};
 
-		socket.send_command("new_data", j, payload);
+		if(!skip_bemos)
+		{	
+			socket->send_command("new_data", j, payload);
+		}
 
 		syslog(LOG_DEBUG, "%s", payload.dump(2).c_str());
 	}
 
 	modbus_close(ctx);
 	modbus_free(ctx);
+
+	delete(socket);
 
 	logfile.write(LOG_DEBUG, "exited");
 
