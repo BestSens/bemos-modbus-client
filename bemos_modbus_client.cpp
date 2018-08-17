@@ -110,6 +110,7 @@ int main(int argc, char **argv){
 	std::string conn_port = "6450";
 
 	std::string mb_protocol = "tcp";
+	double mb_timeout = 1.0;
 	std::string mb_tcp_target = "192.168.2.230";
 	int mb_tcp_port = 502;
 	
@@ -141,6 +142,7 @@ int main(int argc, char **argv){
 			("suppress_syslog", "do not output syslog messages to stdout")
 			("mb_tcp_client", "modbus tcp server", cxxopts::value<std::string>(mb_tcp_target)->default_value(mb_tcp_target))
 			("mb_tcp_port", "modbus tcp server port", cxxopts::value<int>(mb_tcp_port))
+			("mb_timeout", "modbus response timeout in seconds", cxxopts::value<double>(mb_timeout)->default_value(std::to_string(mb_timeout)))
 			("mb_rtu_serialport", "modbus serial port", cxxopts::value<std::string>(mb_rtu_serialport))
 			("mb_rtu_baud", "modbus serial baudrate", cxxopts::value<int>(mb_rtu_baud)->default_value(std::to_string(mb_rtu_baud)))
 			("mb_rtu_parity", "modbus serial parity: none (N), even (E), odd (O)", cxxopts::value<std::string>(mb_rtu_parity)->default_value(mb_rtu_parity))
@@ -253,11 +255,22 @@ int main(int argc, char **argv){
 		return EXIT_FAILURE;
 	}
 
+	/*
+	 * set modbus slave address
+	 */
 	if(0 != modbus_set_slave(ctx, mb_rtu_slave))
 	{
 		logfile.write(LOG_CRIT, "could not set slave address to %i", mb_rtu_slave);
 		return EXIT_FAILURE;
 	}
+
+	/*
+	 * set modbus timeout
+	 */
+	struct timeval mb_timeout_t;
+	mb_timeout_t.tv_sec = static_cast<int>(mb_timeout);
+	mb_timeout_t.tv_usec = static_cast<int>((mb_timeout-floor(mb_timeout)) * 1000000);
+	modbus_set_response_timeout(ctx, &mb_timeout_t);
 
 	if(!fake) {
 		if(modbus_connect(ctx) == -1) {
