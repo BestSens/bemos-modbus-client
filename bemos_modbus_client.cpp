@@ -353,6 +353,7 @@ int main(int argc, char **argv){
 	};
 
 	while(1) {
+		bestsens::system_helper::systemd::watchdog();
 		timer.wait_on_tick();
 
 		uint16_t reg[128];
