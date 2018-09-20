@@ -37,8 +37,8 @@ system_helper::LogManager logfile("bemos-modbus-client");
 #define USERID 1200
 #define GROUPID 880
 
-#define ADDR_INPUT_REGISTER_START		0x000C 
-#define ADDR_HOLDING_REGISTER_START		0x001E
+#define ADDR_INPUT_REGISTER_START		0x001E 
+#define ADDR_HOLDING_REGISTER_START		0x03E8
 #define ADDR_INPUT_COILS_START			0x00C0 
 #define ADDR_OUTPUT_COILS_START			0x01E0
 
@@ -47,23 +47,23 @@ system_helper::LogManager logfile("bemos-modbus-client");
 #define CONV_PERCENTAGE	2
 
 const json mb_register_map = {
-	{{"parameter name", "RIO_AM0"}, {"address offset", 19},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM1"}, {"address offset", 20},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM2"}, {"address offset", 21},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM3"}, {"address offset", 22},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM4"}, {"address offset", 23},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM5"}, {"address offset", 24},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM6"}, {"address offset", 25},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM7"}, {"address offset", 26},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM0"}, {"address offset", 32},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM1"}, {"address offset", 33},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM2"}, {"address offset", 34},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM3"}, {"address offset", 35},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM4"}, {"address offset", 36},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM5"}, {"address offset", 37},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM6"}, {"address offset", 38},	{"conversion", CONV_PERCENTAGE}},
+	{{"parameter name", "RIO_AM7"}, {"address offset", 39},	{"conversion", CONV_PERCENTAGE}},
 
-	{{"parameter name", "RIO_TM0"}, {"address offset", 43},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM1"}, {"address offset", 44},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM2"},	{"address offset", 45},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM3"}, {"address offset", 46},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM4"}, {"address offset", 47},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM5"}, {"address offset", 48},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM6"}, {"address offset", 49},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM7"}, {"address offset", 50},	{"conversion", CONV_TEMP}}
+	{{"parameter name", "RIO_TM0"}, {"address offset", 41},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM1"}, {"address offset", 42},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM2"},	{"address offset", 43},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM3"}, {"address offset", 44},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM4"}, {"address offset", 45},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM5"}, {"address offset", 46},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM6"}, {"address offset", 47},	{"conversion", CONV_TEMP}},
+	{{"parameter name", "RIO_TM7"}, {"address offset", 48},	{"conversion", CONV_TEMP}}
 };
 
 void check_errorcode(uint16_t offset, int16_t val) {
@@ -360,25 +360,25 @@ int main(int argc, char **argv){
 
 		int num;
 		if(!fake) {
-			num = modbus_read_input_registers(ctx, ADDR_INPUT_REGISTER_START, 50, reg);
+			num = modbus_read_input_registers(ctx, ADDR_INPUT_REGISTER_START, 20, reg + ADDR_INPUT_REGISTER_START + 1);
 		} else {
-			reg[19] = pressure_to_register_value(5);
-			reg[20] = pressure_to_register_value(6);
-			reg[21] = flow_to_register_value(15);
-			reg[22] = percentage_to_register_value(0.89);
-			reg[23] = 0x8006;
-			reg[24] = 0x8006;
-			reg[25] = 0x8006;
-			reg[26] = 0x8001;
+			reg[32] = pressure_to_register_value(5);
+			reg[33] = pressure_to_register_value(6);
+			reg[34] = flow_to_register_value(15);
+			reg[35] = percentage_to_register_value(0.89);
+			reg[36] = 0x8006;
+			reg[37] = 0x8006;
+			reg[38] = 0x8006;
+			reg[39] = 0x8001;
 
-			reg[43] = temperature_to_register_value(50);
-			reg[44] = temperature_to_register_value(51);
-			reg[45] = temperature_to_register_value(52);
-			reg[46] = temperature_to_register_value(53);
+			reg[41] = temperature_to_register_value(50);
+			reg[42] = temperature_to_register_value(51);
+			reg[43] = temperature_to_register_value(52);
+			reg[44] = temperature_to_register_value(53);
+			reg[45] = 0x8006;
+			reg[46] = 0x8001;
 			reg[47] = 0x8006;
-			reg[48] = 0x8001;
-			reg[49] = 0x8006;
-			reg[50] = 0x8006;
+			reg[48] = 0x8006;
 
 			num = 50;
 		}
