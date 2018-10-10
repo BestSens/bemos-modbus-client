@@ -306,15 +306,21 @@ int main(int argc, char **argv){
 		return uint16_t(temp);
 	};
 
-	auto register_value_to_temperature = [&](uint16_t value) -> double {
+	auto register_value_to_temperature = [&](int16_t value) -> double {
 		return double(value) / 10;
 	};
 
-	auto convert_register_value_to_current = [&](uint16_t value) -> double {
+	auto convert_register_value_to_current = [&](int16_t value) -> double {
+		if(value < 0)
+			value = 0;
+
 		return interpolate<double>(0x0000, 0x6C00, value, 4, 20);
 	};
 
-	auto convert_register_value_to_percentage = [&](uint16_t value) -> double {
+	auto convert_register_value_to_percentage = [&](int16_t value) -> double {
+		if(value < 0)
+			value = 0;
+
 		return interpolate<double>(0x0000, 0x6C00, value, 0, 1);
 	};
 
@@ -400,7 +406,7 @@ int main(int argc, char **argv){
 				int address_offset = e["address offset"];
 				int conversion = e["conversion"];
 
-				uint16_t reg_value = getValue(reg, address_offset);
+				int16_t reg_value = static_cast<int16_t>(getValue(reg, address_offset));
 				double value;
 
 				switch(conversion) {
