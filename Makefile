@@ -1,5 +1,5 @@
 CFLAGS = -std=c11 -D_XOPEN_SOURCE=700 -DNDEBUG
-CPPFLAGS = -std=c++14 -DNDEBUG -I/usr/include/modbus
+CPPFLAGS = -std=c++14 -DNDEBUG -I${SDKTARGETSYSROOT}/usr/include/modbus
 LDFLAGS = -lm -lpthread -lcrypto -lmodbus
 
 OBJ = bemos_modbus_client.o
