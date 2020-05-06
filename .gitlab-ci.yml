@@ -1,77 +1,84 @@
 image: docker.bestwiki/bone/docker-build-image:2.0.3
 
+variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+
 stages:
     - build
     - build-image
+    - release-image
     - deploy
 
+.artifacts: &artifacts
+    expire_in: 4 weeks
+    name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}"
+    paths:
+        - bemos_modbus_client
+        - Dockerfile
+
+## Build ##############################################################################################################
 build:arm:
-    before_script:
-        - git submodule sync --recursive
-        - git submodule update --init --recursive
     stage: build
     artifacts:
-        expire_in: 4 weeks
+        <<: *artifacts
         name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_arm"
-        paths:
-            - bemos_modbus_client
     script:
         - source /opt/boneos/2.0.3/environment-setup-cortexa9hf-vfp-neon-poky-linux-gnueabi
-        - make systemd
+        -   if [ "${CI_COMMIT_TAG}" == "" ]; then
+                make systemd STRIP=true APP_VERSION_BRANCH=${CI_COMMIT_REF_SLUG} APP_VERSION_GITREV=${CI_COMMIT_SHORT_SHA}; 
+            else
+                make systemd STRIP=true APP_VERSION_BRANCH=master APP_VERSION_GITREV=${CI_COMMIT_SHORT_SHA};
+            fi
 
 build:i686:
-    before_script:
-        - git submodule sync --recursive
-        - git submodule update --init --recursive
     stage: build
     artifacts:
-        expire_in: 4 weeks
+        <<: *artifacts
         name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_i686"
-        paths:
-            - bemos_modbus_client
-            - Dockerfile
     script:
-        - make
+        -   if [ "${CI_COMMIT_TAG}" == "" ]; then
+                make STRIP=true APP_VERSION_BRANCH=${CI_COMMIT_REF_SLUG} APP_VERSION_GITREV=${CI_COMMIT_SHORT_SHA}; 
+            else
+                make STRIP=true APP_VERSION_BRANCH=master APP_VERSION_GITREV=${CI_COMMIT_SHORT_SHA};
+            fi
 
-deploy:arm:
+## Create persistent archives #########################################################################################
+.deploy: &deploy
     stage: deploy
     when: on_success
-    variables:
-        GIT_STRATEGY: none
     only:
         - tags
-    artifacts:
-        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_arm"
-        paths:
-            - bemos_modbus_client
+    variables:
+        GIT_STRATEGY: none
     script:
         - echo '1'
+
+deploy:arm:
+    <<: *deploy
+    artifacts:
+        <<: *artifacts
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_arm"
+        expire_in:
     dependencies:
         - build:arm
 
 deploy:i686:
-    stage: deploy
-    when: on_success
-    variables:
-        GIT_STRATEGY: none
-    only:
-        - tags
+    <<: *deploy
     artifacts:
+        <<: *artifacts
         name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_i686"
-        paths:
-            - bemos_modbus_client
-    script:
-        - echo '1'
+        expire_in:
     dependencies:
         - build:i686
 
+## Docker image #######################################################################################################
 build-image:
     image: docker:latest
     stage: build-image
     variables:
         GIT_STRATEGY: none
     script:
-        - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+        - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
         - docker build --pull -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME .
         - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
     dependencies:
@@ -79,11 +86,11 @@ build-image:
 
 release-image:
     image: docker:latest
-    stage: deploy
+    stage: release-image
     variables:
         GIT_STRATEGY: none
     script:
-        - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+        - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
         - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
         - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME $CI_REGISTRY_IMAGE:latest
         - docker push $CI_REGISTRY_IMAGE:latest
@@ -92,26 +99,26 @@ release-image:
     dependencies:
         - build-image
 
-staging:
+## Deploy #############################################################################################################
+.update_env: &update_env
     stage: deploy
     when: manual
-    environment: staging
     variables:
         GIT_STRATEGY: none
     script:
-        - fab staging deploy_to_bone:bemos_modbus_client -f /root/fabfile.py
-        - fab staging restart_service:bemos-modbus-client -f /root/fabfile.py
+        - fab ${CI_ENVIRONMENT_NAME} deploy_to_bone:bemos_modbus_client -f /root/fabfile.py
+        - fab ${CI_ENVIRONMENT_NAME} restart_service:bemos-modbus-client -f /root/fabfile.py
     dependencies:
         - build:arm
 
+staging:
+    <<: *update_env
+    environment: staging
+
+staging:denis:
+    <<: *update_env
+    environment: denis
+
 production:
-    stage: deploy
-    when: manual
+    <<: *update_env
     environment: production
-    variables:
-        GIT_STRATEGY: none
-    script:
-        - fab production deploy_to_bone:bemos_modbus_client -f /root/fabfile.py
-        - fab production restart_service:bemos-modbus-client -f /root/fabfile.py
-    dependencies:
-        - build:arm
