@@ -1,25 +1,23 @@
 #ifndef VERSION_HPP_
 #define VERSION_HPP_
 
-#include "gitrev.hpp"
+#include <string>
 
-#ifndef APP_VERSION_GITREV
-#define APP_VERSION_GITREV
-#endif
+std::string app_version();
+std::string app_git_branch();
+std::string app_git_revision();
+std::string app_compile_date();
+std::string app_compile_flags();
+std::string app_linker_flags();
+std::string app_compiler_version();
+bool app_is_dev();
 
-#define APP_DEV
-
-#define APP_VERSION_MAJOR   1
-#define APP_VERSION_MINOR   0
-#define APP_VERSION_PATCH   0
-
-#define APP_STR_EXP(__A)    #__A
-#define APP_STR(__A)        APP_STR_EXP(__A)
-
-#ifdef APP_DEV
-#define APP_VERSION         APP_STR(APP_VERSION_MAJOR) "." APP_STR(APP_VERSION_MINOR) "." APP_STR(APP_VERSION_PATCH) "-dev" APP_STR(APP_VERSION_GITREV)
+constexpr bool app_is_debug() {
+#ifdef DEBUG
+	return true;
 #else
-#define APP_VERSION         APP_STR(APP_VERSION_MAJOR) "." APP_STR(APP_VERSION_MINOR) "." APP_STR(APP_VERSION_PATCH)
+	return false;
 #endif
+}
 
 #endif /* VERSION_HPP_ */

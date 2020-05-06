@@ -163,7 +163,17 @@ int main(int argc, char **argv){
 			}
 
 			if(result.count("version")) {
-				std::cout << "bemos-modbus-client version: " << APP_VERSION << std::endl;
+				std::cout << "bemos-modbus-client version: " << app_version() << std::endl;
+
+				if(result.count("verbose")) {
+					std::cout << "git branch: " << app_git_branch() << std::endl;
+					std::cout << "git revision: " << app_git_revision() << std::endl;
+					std::cout << "compiled @ " << app_compile_date() << std::endl;
+					std::cout << "compiler version: " << app_compiler_version() << std::endl;
+					std::cout << "compiler flags: " << app_compile_flags() << std::endl;
+					std::cout << "linker flags: " << app_linker_flags() << std::endl;
+				}
+
 				return EXIT_SUCCESS;
 			}
 
@@ -210,7 +220,7 @@ int main(int argc, char **argv){
 		}
 	}
 
-	logfile.write(LOG_INFO, "starting bemos-modbus-client %s", APP_VERSION);
+	logfile.write(LOG_INFO, "starting bemos-modbus-client %s", app_version().c_str());
 
 	/*
 	 * Test IEEE 754
