@@ -1,4 +1,4 @@
-image: docker.bestwiki/bone/docker-build-image:2.0.3
+image: docker.bestsens.de/bone/docker-build-image:2.0.3
 
 variables:
     GIT_SUBMODULE_STRATEGY: recursive
