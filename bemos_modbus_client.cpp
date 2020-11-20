@@ -280,7 +280,14 @@ int main(int argc, char **argv){
 	struct timeval mb_timeout_t;
 	mb_timeout_t.tv_sec = static_cast<int>(mb_timeout);
 	mb_timeout_t.tv_usec = static_cast<int>((mb_timeout-floor(mb_timeout)) * 1000000);
+#if (LIBMODBUS_VERSION_CHECK(3, 1, 2))
+	if(modbus_set_response_timeout(ctx, mb_timeout_t.tv_sec, mb_timeout_t.tv_usec) < 0) {
+		logfile.write(LOG_CRIT, "error setting modbus timeout");
+		return EXIT_FAILURE;
+	}
+#else
 	modbus_set_response_timeout(ctx, &mb_timeout_t);
+#endif
 
 	if(!fake) {
 		if(modbus_connect(ctx) == -1) {
