@@ -1,3 +1,5 @@
+## 1.0.3 (unreleased)
+
 ## 1.0.2 (20.11.2020)
 - no code changes
 
