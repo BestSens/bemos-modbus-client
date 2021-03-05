@@ -19,7 +19,6 @@
 #include <sys/socket.h>
 
 #include "version.hpp"
-#include "rio_exception.hpp"
 #include "libs/cxxopts/include/cxxopts.hpp"
 #include "libs/bone_helper/loopTimer.hpp"
 #include "libs/json/single_include/nlohmann/json.hpp"
@@ -37,47 +36,24 @@ system_helper::LogManager logfile("bemos-modbus-client");
 #define USERID 1200
 #define GROUPID 880
 
-#define ADDR_INPUT_REGISTER_START		0x001E 
-#define ADDR_HOLDING_REGISTER_START		0x03E8
-#define ADDR_INPUT_COILS_START			0x00C0 
-#define ADDR_OUTPUT_COILS_START			0x01E0
-
-#define CONV_CURRENT 	0
-#define CONV_TEMP		1
-#define CONV_PERCENTAGE	2
+#define ADDR_INPUT_REGISTER_START	0x0000 
 
 const json mb_register_map = {
-	{{"parameter name", "RIO_AM0"}, {"address offset", 32},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM1"}, {"address offset", 33},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM2"}, {"address offset", 34},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM3"}, {"address offset", 35},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM4"}, {"address offset", 36},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM5"}, {"address offset", 37},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM6"}, {"address offset", 38},	{"conversion", CONV_PERCENTAGE}},
-	{{"parameter name", "RIO_AM7"}, {"address offset", 39},	{"conversion", CONV_PERCENTAGE}},
-
-	{{"parameter name", "RIO_TM0"}, {"address offset", 41},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM1"}, {"address offset", 42},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM2"},	{"address offset", 43},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM3"}, {"address offset", 44},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM4"}, {"address offset", 45},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM5"}, {"address offset", 46},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM6"}, {"address offset", 47},	{"conversion", CONV_TEMP}},
-	{{"parameter name", "RIO_TM7"}, {"address offset", 48},	{"conversion", CONV_TEMP}}
+	{{"parameter name", "filtered_adc"}, 		{"address offset", 10}},
+	{{"parameter name", "electrical_value"}, 	{"address offset", 12}},
+	{{"parameter name", "gross"}, 				{"address offset", 14}},
+	{{"parameter name", "net"}, 				{"address offset", 16}},
+	{{"parameter name", "minimum"}, 			{"address offset", 18}},
+	{{"parameter name", "maximum"}, 			{"address offset", 20}},
+	{{"parameter name", "peak_to_peak"}, 		{"address offset", 22}}
 };
 
-void check_errorcode(uint16_t offset, int16_t val) {
-	if(val >= 32512 || val <= -32512)
-		throw rio_exception(ADDR_HOLDING_REGISTER_START + offset, val);
-}
 
 int16_t getValue(const uint16_t* start, uint16_t offset) {
 	if(start + offset == nullptr)
 		throw std::invalid_argument("out of bounds");
 
 	int16_t val = start[offset];
-	//int16_t val = ntohs(start[offset]);
-	check_errorcode(offset, val);
 	
 	return val;
 }
@@ -88,9 +64,15 @@ int32_t getValue32(const uint16_t* start, uint16_t offset) {
 }
 
 float getFloat(const uint16_t* start, uint16_t offset) {
-	int32_t data = getValue32(start, offset);
-	float val = *reinterpret_cast<float*>(&data);
-	return val;
+	if(start + offset == nullptr)
+		throw std::invalid_argument("out of bounds");
+
+	//syslog(LOG_DEBUG, "abcd: %f", modbus_get_float_abcd(start + offset));
+	//syslog(LOG_DEBUG, "cdab: %f", modbus_get_float_cdab(start + offset));
+	//syslog(LOG_DEBUG, "badc: %f", modbus_get_float_badc(start + offset));
+	//syslog(LOG_DEBUG, "dcba: %f", modbus_get_float_dcba(start + offset));
+
+	return modbus_get_float_cdab(start + offset);
 }
 
 template<typename _NumericType = uint16_t>
@@ -101,7 +83,6 @@ _NumericType interpolate(double from, double to, double value, _NumericType int_
 
 int main(int argc, char **argv){
 	bool daemon = false;
-	bool fake = false;
 	bool skip_bemos = false;
 
 	logfile.setMaxLogLevel(LOG_INFO);
@@ -150,7 +131,6 @@ int main(int argc, char **argv){
 			("mb_rtu_stopbits", "modbus serial stop bits", cxxopts::value<int>(mb_rtu_stopbits)->default_value(std::to_string(mb_rtu_stopbits)))
 			("mb_rtu_slave", "modbus serial slave address", cxxopts::value<int>(mb_rtu_slave)->default_value(std::to_string(mb_rtu_slave)))
 			("mb_protocol", "can be either: rtu or tcp", cxxopts::value<std::string>(mb_protocol)->default_value(mb_protocol))
-			("fake", "fake data", cxxopts::value<bool>(fake))
 			("skip_bemos", "do not use bemos", cxxopts::value<bool>(skip_bemos))
 		;
 
@@ -193,10 +173,6 @@ int main(int argc, char **argv){
 
 			if(result.count("password")) {
 				password = bestsens::netHelper::sha512(result["password"].as<std::string>());
-			}
-
-			if(fake) {
-				logfile.write(LOG_INFO, "fake mode enabled");
 			}
 
 			if(skip_bemos)
@@ -289,12 +265,10 @@ int main(int argc, char **argv){
 	modbus_set_response_timeout(ctx, &mb_timeout_t);
 #endif
 
-	if(!fake) {
-		if(modbus_connect(ctx) == -1) {
-			logfile.write(LOG_CRIT, "failed to connect to modbus client, exiting");
-			modbus_free(ctx);
-			return EXIT_FAILURE;
-		}
+	if(modbus_connect(ctx) == -1) {
+		logfile.write(LOG_CRIT, "failed to connect to modbus client, exiting");
+		modbus_free(ctx);
+		return EXIT_FAILURE;
 	}
 
 	/* Deamonize */
@@ -311,69 +285,12 @@ int main(int argc, char **argv){
 	if(!skip_bemos)
 	{
 		/*
-		 * register "external_data" algo
+		 * register "clipx" algo
 		 */
-		socket->send_command("register_analysis", j, {{"name", "external_data"}});
+		socket->send_command("register_analysis", j, {{"name", "clipx"}});
 	}
 
 	bestsens::system_helper::systemd::ready();
-
-	auto temperature_to_register_value = [&](double temperature) -> uint16_t {
-		short temp = static_cast<short>(temperature * 10);
-		return uint16_t(temp);
-	};
-
-	auto register_value_to_temperature = [&](int16_t value) -> double {
-		return double(value) / 10;
-	};
-
-	auto convert_register_value_to_current = [&](int16_t value) -> double {
-		if(value < 0)
-			value = 0;
-
-		return interpolate<double>(0x0000, 0x6C00, value, 4, 20);
-	};
-
-	auto convert_register_value_to_percentage = [&](int16_t value) -> double {
-		if(value < 0)
-			value = 0;
-
-		return interpolate<double>(0x0000, 0x6C00, value, 0, 1);
-	};
-
-	auto convert_current_to_value = [&](double value, double from, double to) -> double {
-		return interpolate<double>(4, 20, value, from, to);
-	};
-
-	auto convert_value_to_current = [&](double value, double from, double to) -> double {
-		return interpolate<double>(from, to, value, 4, 20);
-	};
-
-	// pressure in bar
-	auto pressure_to_register_value = [&](double pressure) -> uint16_t {
-		// convert to current
-		double current = convert_value_to_current(pressure, -1, 25); // assume range -1 to 25 bar
-
-		// convert to register value
-		return interpolate<uint16_t>(4, 20, current, 0x0000, 0x6C00);
-	};
-
-	// flow in l/min
-	auto flow_to_register_value = [&](double flow) -> uint16_t {
-		// convert to current
-		double current = convert_value_to_current(flow, 0, 130*1000/60);
-
-		// convert to register value
-		return interpolate<uint16_t>(4, 20, current, 0x0000, 0x6C00);
-	};
-
-	auto percentage_to_register_value = [&](double percentage) -> uint16_t {
-		// convert to current
-		double current = convert_value_to_current(percentage, 0, 1);
-
-		// convert to register value
-		return interpolate<uint16_t>(4, 20, current, 0x0000, 0x6C00);
-	};
 
 	while(1) {
 		bestsens::system_helper::systemd::watchdog();
@@ -381,30 +298,7 @@ int main(int argc, char **argv){
 
 		uint16_t reg[128];
 
-		int num;
-		if(!fake) {
-			num = modbus_read_input_registers(ctx, ADDR_INPUT_REGISTER_START, 20, reg + ADDR_INPUT_REGISTER_START + 1);
-		} else {
-			reg[32] = pressure_to_register_value(5);
-			reg[33] = pressure_to_register_value(6);
-			reg[34] = flow_to_register_value(15);
-			reg[35] = percentage_to_register_value(0.89);
-			reg[36] = 0x8006;
-			reg[37] = 0x8006;
-			reg[38] = 0x8006;
-			reg[39] = 0x8001;
-
-			reg[41] = temperature_to_register_value(50);
-			reg[42] = temperature_to_register_value(51);
-			reg[43] = temperature_to_register_value(52);
-			reg[44] = temperature_to_register_value(53);
-			reg[45] = 0x8006;
-			reg[46] = 0x8001;
-			reg[47] = 0x8006;
-			reg[48] = 0x8006;
-
-			num = 50;
-		}
+		int num = modbus_read_input_registers(ctx, ADDR_INPUT_REGISTER_START, 24, reg + ADDR_INPUT_REGISTER_START);
 		
 		if(num == -1) {
 			logfile.write(LOG_CRIT, "error reading registers, exiting: %s", modbus_strerror(errno));
@@ -414,46 +308,26 @@ int main(int argc, char **argv){
 		}
 
 		json attribute_data = {
-			{"date", time(NULL)}
+			{"date", std::time(nullptr)}
 		};
 
 		for(auto e : mb_register_map) {
 			try {
 				std::string parameter = e["parameter name"];
 				int address_offset = e["address offset"];
-				int conversion = e["conversion"];
 
-				int16_t reg_value = static_cast<int16_t>(getValue(reg, address_offset));
-				double value;
-
-				switch(conversion) {
-					case CONV_PERCENTAGE: value = convert_register_value_to_percentage(reg_value); break;
-					case CONV_CURRENT: value = convert_register_value_to_current(reg_value); break;
-					case CONV_TEMP: value = register_value_to_temperature(reg_value); break;
-					default: value = reg_value;
-				}
-
-				attribute_data[parameter] = value;
-			} catch(const rio_exception& err) {
-				std::string parameter = e["parameter name"];
-				int address_offset = e["address offset"];
-
-				std::ostringstream error_output;
-				error_output << err.getErrorMessage() << " (0x" << std::setw(4) << std::hex << err.getErrorCode() << ")";
-
-				attribute_data[parameter] = error_output.str();
+				attribute_data[parameter] = getFloat(reg, address_offset);
 			} catch(const std::exception& err) {
 				logfile.write(LOG_ERR, "error getting value: %s", err.what());
 			}
 		}
 
 		const json payload = {
-			{"name", "external_data"},
+			{"name", "clipx"},
 			{"data", attribute_data}
 		};
 
-		if(!skip_bemos)
-		{	
+		if(!skip_bemos) {	
 			socket->send_command("new_data", j, payload);
 		}
 
