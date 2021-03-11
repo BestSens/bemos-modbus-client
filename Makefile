@@ -1,10 +1,14 @@
-CPPFLAGS = -std=c++14 -pthread -MMD -MP -I${SDKTARGETSYSROOT}/usr/include/modbus
+CPPFLAGS = -std=c++14 -pthread -MMD -MP -I${SDKTARGETSYSROOT}/usr/include/modbus -Ilibs/json/single_include/ -Ilibs/cxxopts/include/ -Ilibs/spdlog/include/ -Ilibs/fmt/include/ -DFMT_HEADER_ONLY -DSPDLOG_FMT_EXTERNAL
 LDFLAGS = -lm -lpthread -lcrypto -lmodbus
+
+# Warnings
+CPPFLAGS += -Wall -Wextra -Wpedantic
 
 ifndef DEBUG
 	CPPFLAGS += -O2 -DNDEBUG
+	LDFLAGS += -s
 else
-	CPPFLAGS += -O1 -DDEBUG -Wall -g -rdynamic -funwind-tables -fno-inline
+	CPPFLAGS += -Og -DDEBUG -g -ggdb3 -rdynamic -funwind-tables -fno-inline
 endif
 
 ifdef APP_VERSION_BRANCH

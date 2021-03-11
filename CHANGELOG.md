@@ -1,4 +1,6 @@
-## 1.0.3 (unreleased)
+## 1.1.0 (unreleased)
+- use spdlog as logging library
+- make generic to be used in parallel with configuration files
 
 ## 1.0.2 (20.11.2020)
 - no code changes
