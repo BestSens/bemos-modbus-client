@@ -124,7 +124,7 @@ namespace {
 		float output;
 
 		switch(order) {
-			default:
+			default: throw std::invalid_argument("unknown byte order"); break;
 			case order_abcd: output = modbus_get_float_abcd(start + offset); break;
 			case order_cdab: output = modbus_get_float_cdab(start + offset); break;
 			case order_badc: output = modbus_get_float_badc(start + offset); break;
@@ -499,10 +499,12 @@ int main(int argc, char **argv){
 				register_type_t register_type = e.at("type").get<register_type_t>();
 				unsigned int address = e.at("address").get<unsigned int>() - input_register_start;
 
-				order_t order = order_abcd;
+				order_t order = order_invalid;
 				try {
 					order = e.at("order").get<order_t>();
-				} catch(...) {}
+				} catch(...) {
+					order = order_abcd;
+				}
 
 				switch(register_type) {
 					case type_f32:	attribute_data[source][identifier] = getValue_f32(reg, address, order); break;
@@ -512,7 +514,7 @@ int main(int argc, char **argv){
 					case type_u32:	attribute_data[source][identifier] = getValue_u32(reg, address); break;
 					case type_i64:	attribute_data[source][identifier] = getValue_i64(reg, address); break;
 					case type_u64:	attribute_data[source][identifier] = getValue_u64(reg, address); break;
-					default: throw std::runtime_error("register type not available"); break;
+					default: throw std::invalid_argument("register type not available"); break;
 				}
 			} catch(const std::exception& err) {
 				spdlog::error("error getting value: {}", err.what());
