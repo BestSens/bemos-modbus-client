@@ -59,31 +59,65 @@ namespace {
 		{order_dcba, "dcba"},
 	})
 
-	enum register_type_t { type_i16, type_u16, type_i32, type_u32, type_f32, type_invalid = -1 };
+	enum register_type_t { type_i16, type_u16, type_i32, type_u32, type_i64, type_u64, type_f32, type_invalid = -1 };
 	NLOHMANN_JSON_SERIALIZE_ENUM(register_type_t, {
 		{type_invalid, nullptr},
 		{type_i16, "i16"},
 		{type_u16, "u16"},
 		{type_i32, "i32"},
 		{type_u32, "u32"},
+		{type_i64, "i64"},
+		{type_u64, "u64"},
 		{type_f32, "f32"},
 	})
 
-	int16_t getValue(const uint16_t* start, uint16_t offset) {
+	uint16_t getValue_u16(const uint16_t* start, uint16_t offset) {
 		if(start + offset == nullptr)
 			throw std::invalid_argument("out of bounds");
 
-		int16_t val = start[offset];
+		return start[offset];
+	}
+
+	int16_t getValue_i16(const uint16_t* start, uint16_t offset) {
+		uint16_t ival = getValue_u16(start, offset);
+
+		int16_t val;
+		std::memcpy(&val, &ival, sizeof(val));
 		
 		return val;
 	}
 
-	int32_t getValue32(const uint16_t* start, uint16_t offset) {
-		int32_t val = (getValue(start, offset) << 16) + getValue(start, offset + 1);
+	uint32_t getValue_u32(const uint16_t* start, uint16_t offset) {
+		uint32_t val = getValue_u16(start, offset);
+		return (val << 16) + getValue_u16(start, offset + 1);
+	}
+
+
+	int32_t getValue_i32(const uint16_t* start, uint16_t offset) {
+		uint32_t ival = getValue_u32(start, offset);
+		
+		int32_t val;
+		std::memcpy(&val, &ival, sizeof(val));
+
 		return val;
 	}
 
-	float getFloat(const uint16_t* start, uint16_t offset, const order_t order) {
+	uint64_t getValue_u64(const uint16_t* start, uint16_t offset) {
+		uint64_t val = getValue_u32(start, offset);
+		return (val << 32) + getValue_u32(start, offset + 2);
+	}
+
+
+	int64_t getValue_i64(const uint16_t* start, uint16_t offset) {
+		uint64_t ival = getValue_u64(start, offset);
+		
+		int64_t val;
+		std::memcpy(&val, &ival, sizeof(val));
+
+		return val;
+	}
+
+	float getValue_f32(const uint16_t* start, uint16_t offset, const order_t order) {
 		if(start + offset == nullptr)
 			throw std::invalid_argument("out of bounds");
 
@@ -465,15 +499,20 @@ int main(int argc, char **argv){
 				register_type_t register_type = e.at("type").get<register_type_t>();
 				unsigned int address = e.at("address").get<unsigned int>() - input_register_start;
 
+				order_t order = order_abcd;
+				try {
+					order = e.at("order").get<order_t>();
+				} catch(...) {}
+
 				switch(register_type) {
+					case type_f32:	attribute_data[source][identifier] = getValue_f32(reg, address, order); break;
+					case type_i16:	attribute_data[source][identifier] = getValue_i16(reg, address); break;
+					case type_u16:	attribute_data[source][identifier] = getValue_u16(reg, address); break;
+					case type_i32:	attribute_data[source][identifier] = getValue_i32(reg, address); break;
+					case type_u32:	attribute_data[source][identifier] = getValue_u32(reg, address); break;
+					case type_i64:	attribute_data[source][identifier] = getValue_i64(reg, address); break;
+					case type_u64:	attribute_data[source][identifier] = getValue_u64(reg, address); break;
 					default: throw std::runtime_error("register type not available"); break;
-					case type_f32:	{
-										order_t order = e.at("order").get<order_t>();
-										attribute_data[source][identifier] = getFloat(reg, address, order);
-									}
-									break;
-					case type_i16:	attribute_data[source][identifier] = getValue(reg, address); break;
-					case type_i32:	attribute_data[source][identifier] = getValue32(reg, address); break;
 				}
 			} catch(const std::exception& err) {
 				spdlog::error("error getting value: {}", err.what());
