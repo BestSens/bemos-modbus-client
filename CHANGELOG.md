@@ -1,4 +1,4 @@
-## 1.1.0 (unreleased)
+## 2.0.0 (unreleased)
 - use spdlog as logging library
 - make generic to be used in parallel with configuration files
 
