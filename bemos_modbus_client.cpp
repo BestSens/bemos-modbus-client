@@ -516,16 +516,29 @@ int main(int argc, char **argv){
 					order = order_abcd;
 				}
 
+				double value;
+
 				switch(register_type) {
-					case type_f32:	attribute_data[source][identifier] = getValue_f32(reg, address, order); break;
-					case type_i16:	attribute_data[source][identifier] = getValue_i16(reg, address); break;
-					case type_u16:	attribute_data[source][identifier] = getValue_u16(reg, address); break;
-					case type_i32:	attribute_data[source][identifier] = getValue_i32(reg, address); break;
-					case type_u32:	attribute_data[source][identifier] = getValue_u32(reg, address); break;
-					case type_i64:	attribute_data[source][identifier] = getValue_i64(reg, address); break;
-					case type_u64:	attribute_data[source][identifier] = getValue_u64(reg, address); break;
+					case type_f32:	value = getValue_f32(reg, address, order); break;
+					case type_i16:	value = getValue_i16(reg, address); break;
+					case type_u16:	value = getValue_u16(reg, address); break;
+					case type_i32:	value = getValue_i32(reg, address); break;
+					case type_u32:	value = getValue_u32(reg, address); break;
+					case type_i64:	value = getValue_i64(reg, address); break;
+					case type_u64:	value = getValue_u64(reg, address); break;
 					default: throw std::invalid_argument("register type not available"); break;
 				}
+
+				try {
+					if(e.at("scale").is_number()) {
+						value *= e.at("scale").get<double>();
+					} else if(e.at("scale").is_array()) {
+						auto scale = e.at("scale").get<std::array<int, 4>>();
+						value = interpolate(scale.at(0), scale.at(1), value, scale.at(2), scale.at(3));
+					}
+				} catch(...) {}
+
+				attribute_data[source][identifier] = value;
 			} catch(const std::exception& err) {
 				spdlog::error("error getting value: {}", err.what());
 			}
