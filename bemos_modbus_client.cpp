@@ -344,6 +344,7 @@ int main(int argc, char **argv){
 	double mb_timeout = 1.0;
 	std::string mb_tcp_target = "";
 	int mb_tcp_port = 502;
+	int function_code = 3;
 	
 	std::string mb_rtu_serialport = "/dev/ttyS1";
 	int mb_rtu_baud = 9600;
@@ -362,6 +363,10 @@ int main(int argc, char **argv){
 
 	try {
 		mb_timeout = mb_configuration.at("timeout").get<double>();
+	} catch(...) {}
+
+	try {
+		function_code = mb_configuration.at("function").get<int>();
 	} catch(...) {}
 
 	if(mb_protocol.compare("tcp") == 0) {
@@ -481,7 +486,12 @@ int main(int argc, char **argv){
 
 		uint16_t reg[256];
 
-		int num = modbus_read_input_registers(ctx, input_register_start, nb_input_registers, reg);
+		int num;
+
+		if(function_code == 4)
+			num = modbus_read_input_registers(ctx, input_register_start, nb_input_registers, reg);
+		else
+			num = modbus_read_registers(ctx, input_register_start, nb_input_registers, reg);
 		
 		if(num == -1) {
 			spdlog::critical("error reading registers, exiting: {}", modbus_strerror(errno));
