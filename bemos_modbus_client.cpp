@@ -342,6 +342,7 @@ int main(int argc, char **argv){
 	int input_register_start = 0;
 	std::string mb_protocol = "tcp";
 	double mb_timeout = 1.0;
+	int mb_update_time = 1000;
 	std::string mb_tcp_target = "";
 	int mb_tcp_port = 502;
 	int function_code = 3;
@@ -367,6 +368,10 @@ int main(int argc, char **argv){
 
 	try {
 		function_code = mb_configuration.at("function").get<int>();
+	} catch(...) {}
+
+	try {
+		mb_update_time = mb_configuration.at("update_time").get<int>();
 	} catch(...) {}
 
 	if(mb_protocol.compare("tcp") == 0) {
@@ -476,7 +481,7 @@ int main(int argc, char **argv){
 		spdlog::debug("skipped daemonizing");
 	}
 
-	bestsens::loopTimer timer(std::chrono::seconds(1), 0);
+	bestsens::loopTimer timer(std::chrono::milliseconds(mb_update_time), 0);
 
 	bestsens::system_helper::systemd::ready();
 
