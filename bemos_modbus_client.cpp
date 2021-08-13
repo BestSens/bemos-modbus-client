@@ -281,7 +281,7 @@ int main(int argc, char **argv){
 	/*
 	 * open socket
 	 */
-	bestsens::jsonNetHelper* socket;
+	bestsens::jsonNetHelper* socket = nullptr;
 
 	if(!skip_bemos) {	
 		socket = new bestsens::jsonNetHelper(conn_target, conn_port);
@@ -399,21 +399,49 @@ int main(int argc, char **argv){
 	{
 		std::unordered_set<std::string> sources_to_register;
 		std::vector<int> input_registers;
+		auto data_sources = json::array();
 
-		for(const auto &e : mb_configuration.at("map").items()) {
-			if(!e.value().is_null()) {
-				std::string source = e.value().at("source").get<std::string>();
-				int input_register = e.value().at("address").get<int>();
+		for (const auto &e : mb_configuration.at("map")) {
+			if (!e.is_null()) {
+				const auto& source = e.at("source").get<std::string>();
+				const auto& identifier = e.at("identifier").get<std::string>();
+				const auto& input_register = e.at("address").get<int>();
+
+				if (e.contains("name") && e.at("name").is_string()) {
+					try {
+						const auto& name = e.at("name").get<std::string>();
+						const auto& unit = e.value("unit", "");
+						const auto& decimals = e.value("decimals", 2);
+
+						json element = {
+							{"name", name},
+							{"source", source},
+							{"identifier", identifier},
+							{"unit", unit},
+							{"decimals", decimals}
+						};
+
+						data_sources.push_back(std::move(element));
+					} catch (...) {}
+				}
 
 				sources_to_register.emplace(source);
 				input_registers.push_back(input_register);
 			}
 		}
 
-		if(!skip_bemos) {
-			for(const auto &e : sources_to_register) {
+		if (!skip_bemos) {
+			for (const auto &e : sources_to_register) {
 				json k;
-				socket->send_command("register_analysis", k, {{"name", e}});
+				auto this_data_sources = json::array();
+
+				for (const auto& f : data_sources) {
+					try {
+						if (f.at("source").get<std::string>() == e) this_data_sources.push_back(f);
+					} catch (...) {}
+				}
+
+				socket->send_command("register_analysis", k, {{"name", e}, {"data_sources", this_data_sources}});
 			}
 		}
 
@@ -507,12 +535,12 @@ int main(int argc, char **argv){
 
 		json attribute_data;
 
-		for(auto e : mb_configuration.at("map")) {
+		for(const auto& e : mb_configuration.at("map")) {
 			try {
-				std::string source = e.at("source").get<std::string>();
-				std::string identifier = e.at("identifier").get<std::string>();
-				register_type_t register_type = e.at("type").get<register_type_t>();
-				unsigned int address = e.at("address").get<unsigned int>() - input_register_start;
+				const auto source = e.at("source").get<std::string>();
+				const auto identifier = e.at("identifier").get<std::string>();
+				const auto register_type = e.at("type").get<register_type_t>();
+				const auto address = e.at("address").get<unsigned int>() - input_register_start;
 
 				order_t order = order_invalid;
 				try {
@@ -521,7 +549,7 @@ int main(int argc, char **argv){
 					order = order_abcd;
 				}
 
-				double value;
+				double value{};
 
 				switch(register_type) {
 					case type_f32:	value = getValue_f32(reg, address, order); break;
@@ -549,16 +577,16 @@ int main(int argc, char **argv){
 			}
 		}
 
-		if(!skip_bemos) {
-			for(const auto &e : attribute_data.items()) {
-				if(!e.value().is_null()) {
+		if (!skip_bemos) {
+			for (const auto &e : attribute_data.items()) {
+				if (!e.value().is_null()) {
 					json k;
 					const json payload = {
 						{"name", e.key()},
 						{"data", e.value()}
 					};
 
-					if(!socket->send_command("new_data", k, payload))
+					if (!socket->send_command("new_data", k, payload))
 						spdlog::error("error updating algorithm_config");
 				}
 			}

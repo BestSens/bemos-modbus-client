@@ -1,6 +1,7 @@
 ## 2.0.0 (unreleased)
 - use spdlog as logging library
 - make generic to be used in parallel with configuration files
+- client now registers data_sources if available in server and defined in configuration
 
 ## 1.0.2 (20.11.2020)
 - no code changes
