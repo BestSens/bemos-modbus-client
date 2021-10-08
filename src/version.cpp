@@ -2,7 +2,7 @@
  * version.cpp
  *
  *  Created on: 17.04.2018
- *		Author: Jan Schöppach
+ *      Author: Jan Schöppach
  */
 
 #include "bemos_modbus_client/version.hpp"
@@ -18,23 +18,23 @@
 #define APP_STR(__A)		APP_STR_EXP(__A)
 
 namespace {
+	const std::string version = fmt::format("{}.{}.{}", app_version_major, app_version_minor, app_version_patch);
+
 	constexpr auto branch = APP_STR(APP_VERSION_BRANCH);
 	constexpr auto revision = APP_STR(APP_VERSION_GITREV);
 }
 
-constexpr auto strings_equal(const char * a, const char * b) -> bool {
-	return *a == *b && (*a == '\0' || strings_equal(a + 1, b + 1));
+constexpr auto stringsEqual(const char * a, const char * b) -> bool {
+    return *a == *b && (*a == '\0' || stringsEqual(a + 1, b + 1));
 }
 
-constexpr auto app_is_dev() -> bool {
-	return !strings_equal(branch, "master") && (std::isdigit(branch[0]) == 0);
+constexpr auto appIsDev() -> bool {
+	return !stringsEqual(branch, "master") && (std::isdigit(branch[0]) == 0);
 }
 
-auto app_version() -> std::string {
-	static const std::string version = fmt::format("{}.{}.{}", APP_VERSION_MAJOR, APP_VERSION_MINOR, APP_VERSION_PATCH);
-
-	if(app_is_dev()) {
-		if(app_is_debug())
+auto appVersion() -> std::string {
+	if(appIsDev()) {
+		if(appIsDebug())
 			return version + "-" + std::string(branch) + std::string(revision) + "-dbg";
 		else
 			return version + "-" + std::string(branch) + std::string(revision);
@@ -43,26 +43,26 @@ auto app_version() -> std::string {
 	return version;
 }
 
-auto app_git_branch() -> std::string {
-	return {branch};
+auto appGitBranch() -> std::string {
+	return std::string(branch);
 }
 
-auto app_git_revision() -> std::string {
-	return {revision};
+auto appGitRevision() -> std::string {
+	return std::string(revision);
 }
 
-auto app_compile_date() -> std::string {
-	return {__TIMESTAMP__};
+auto appCompileDate() -> std::string {
+	return std::string(__TIMESTAMP__);
 }
 
-auto app_compile_flags() -> std::string {
-	return {APP_STR(CPPFLAGS)};
+auto appCompileFlags() -> std::string {
+	return std::string(APP_STR(CPPFLAGS));
 }
 
-auto app_linker_flags() -> std::string {
-	return {APP_STR(LDFLAGS)};
+auto appLinkerFlags() -> std::string {
+	return std::string(APP_STR(LDFLAGS));
 }
 
-auto app_compiler_version() -> std::string {
-	return {__VERSION__};
+auto appCompilerVersion() -> std::string {
+	return std::string(__VERSION__);
 }

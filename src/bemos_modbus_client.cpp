@@ -5,25 +5,25 @@
  *	  Author: Jan Schöppach
  */
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <errno.h>
-#include <exception>
-#include <fstream>
 #include <getopt.h>
-#include <iostream>
 #include <modbus.h>
-#include <string>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
+#include <fstream>
+#include <iostream>
+#include <string>
 #include <unordered_set>
 
 #include "bemos_modbus_client/version.hpp"
 #include "cxxopts.hpp"
 #include "nlohmann/json.hpp"
-
 #include "spdlog/async.h"
 #include "spdlog/fmt/bin_to_hex.h"
 #include "spdlog/sinks/daily_file_sink.h"
@@ -41,17 +41,17 @@
 using namespace bestsens;
 using json = nlohmann::json;
 
-#define LOGIN_USER "bemos-analysis"
-#define LOGIN_HASH "82e324d4dac1dacf019e498d6045835b3998def1c1cece4abf94a3743f149e208f30276b3275fdbb8c60dea4a042c490d73168d41cf70f9cdc3e1e62eb43f8e4"
-
-#define USERID 1200
-#define GROUPID 880
-
 namespace {
-	json mb_configuration;
+	constexpr auto login_user = "bemos-analysis";
+	constexpr auto login_hash = "82e324d4dac1dacf019e498d6045835b"
+								"3998def1c1cece4abf94a3743f149e20"
+								"8f30276b3275fdbb8c60dea4a042c490"
+								"d73168d41cf70f9cdc3e1e62eb43f8e4";
+
+	json mb_configuration; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 	enum order_t { order_abcd, order_cdab, order_badc, order_dcba, order_invalid = -1 };
-	NLOHMANN_JSON_SERIALIZE_ENUM(order_t, {
+	NLOHMANN_JSON_SERIALIZE_ENUM(order_t, { // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
 		{order_invalid, nullptr},
 		{order_abcd, "abcd"},
 		{order_cdab, "cdab"},
@@ -60,7 +60,7 @@ namespace {
 	})
 
 	enum register_type_t { type_i16, type_u16, type_i32, type_u32, type_i64, type_u64, type_f32, type_invalid = -1 };
-	NLOHMANN_JSON_SERIALIZE_ENUM(register_type_t, {
+	NLOHMANN_JSON_SERIALIZE_ENUM(register_type_t, { // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
 		{type_invalid, nullptr},
 		{type_i16, "i16"},
 		{type_u16, "u16"},
@@ -71,57 +71,57 @@ namespace {
 		{type_f32, "f32"},
 	})
 
-	uint16_t getValue_u16(const uint16_t* start, uint16_t offset) {
+	auto getValueU16(const uint16_t* start, uint16_t offset) -> uint16_t {
 		if(start + offset == nullptr)
 			throw std::invalid_argument("out of bounds");
 
 		return start[offset];
 	}
 
-	int16_t getValue_i16(const uint16_t* start, uint16_t offset) {
-		uint16_t ival = getValue_u16(start, offset);
+	auto getValueI16(const uint16_t* start, uint16_t offset) -> int16_t {
+		uint16_t ival = getValueU16(start, offset);
 
-		int16_t val;
+		int16_t val = 0;
 		std::memcpy(&val, &ival, sizeof(val));
 		
 		return val;
 	}
 
-	uint32_t getValue_u32(const uint16_t* start, uint16_t offset) {
-		uint32_t val = getValue_u16(start, offset);
-		return (val << 16) + getValue_u16(start, offset + 1);
+	auto getValueU32(const uint16_t* start, uint16_t offset) -> uint32_t {
+		uint32_t val = getValueU16(start, offset);
+		return (val << 16u) + getValueU16(start, offset + 1);
 	}
 
 
-	int32_t getValue_i32(const uint16_t* start, uint16_t offset) {
-		uint32_t ival = getValue_u32(start, offset);
+	auto getValueI32(const uint16_t* start, uint16_t offset) -> int32_t {
+		uint32_t ival = getValueU32(start, offset);
 		
-		int32_t val;
+		int32_t val = 0;
 		std::memcpy(&val, &ival, sizeof(val));
 
 		return val;
 	}
 
-	uint64_t getValue_u64(const uint16_t* start, uint16_t offset) {
-		uint64_t val = getValue_u32(start, offset);
-		return (val << 32) + getValue_u32(start, offset + 2);
+	auto getValueU64(const uint16_t* start, uint16_t offset) -> uint64_t {
+		uint64_t val = getValueU32(start, offset);
+		return (val << 32u) + getValueU32(start, offset + 2);
 	}
 
 
-	int64_t getValue_i64(const uint16_t* start, uint16_t offset) {
-		uint64_t ival = getValue_u64(start, offset);
+	auto getValueI64(const uint16_t* start, uint16_t offset) -> int64_t {
+		uint64_t ival = getValueU64(start, offset);
 		
-		int64_t val;
+		int64_t val = 0;
 		std::memcpy(&val, &ival, sizeof(val));
 
 		return val;
 	}
 
-	float getValue_f32(const uint16_t* start, uint16_t offset, const order_t order) {
+	auto getValueF32(const uint16_t* start, uint16_t offset, const order_t order) -> float {
 		if(start + offset == nullptr)
 			throw std::invalid_argument("out of bounds");
 
-		float output;
+		float output = NAN;
 
 		switch(order) {
 			default: throw std::invalid_argument("unknown byte order"); break;
@@ -134,8 +134,8 @@ namespace {
 		return output;
 	}
 
-	template<typename _NumericType = uint16_t>
-	_NumericType interpolate(double from, double to, double value, _NumericType int_from, _NumericType int_to) {
+	template<typename NumericType = uint16_t>
+	auto interpolate(double from, double to, double value, NumericType int_from, NumericType int_to) -> NumericType {
 		return int_from * (1 - (value - from) / (to - from)) + int_to * ((value - from) / (to - from));
 	}
 
@@ -154,7 +154,7 @@ namespace {
 	#endif
 }
 
-int main(int argc, char **argv){
+auto main(int argc, char **argv) -> int{
 	bool daemon = false;
 	bool skip_bemos = false;
 
@@ -178,8 +178,8 @@ int main(int argc, char **argv){
 
 	std::string config_path;
 
-	std::string username = std::string(LOGIN_USER);
-	std::string password = std::string(LOGIN_HASH);
+	std::string username = std::string(login_user);
+	std::string password = std::string(login_hash);
 
 	/*
 	 * parse commandline options
@@ -194,7 +194,7 @@ int main(int argc, char **argv){
 			("v,verbose", "verbose output")
 			("c,connect", "connect to given host", cxxopts::value<std::string>(conn_target)->default_value(conn_target))
 			("p,port", "connect to given port", cxxopts::value<std::string>(conn_port)->default_value(conn_port))
-			("username", "username used to connect", cxxopts::value<std::string>(username)->default_value(std::string(LOGIN_USER)))
+			("username", "username used to connect", cxxopts::value<std::string>(username)->default_value(std::string(login_user)))
 			("password", "plain text password used to connect", cxxopts::value<std::string>())
 			("suppress_syslog", "do not output syslog messages to stdout")
 			("config", "path to configuration file", cxxopts::value<std::string>(), "FILE")
@@ -206,27 +206,27 @@ int main(int argc, char **argv){
 
 			auto result = options.parse(argc, argv);
 
-			if(result.count("help")) {
+			if (result.count("help") != 0u) {
 				spdlog::get("console")->info(options.help());
 				return EXIT_SUCCESS;
 			}
 
-			if(result.count("version")) {
-				spdlog::get("console")->info("bemos-modbus-client version: {}", app_version());
+			if (result.count("version") != 0u) {
+				spdlog::get("console")->info("bemos-modbus-client version: {}", appVersion());
 
-				if(result.count("verbose")) {
-					spdlog::get("console")->info("git branch: {}", app_git_branch());
-					spdlog::get("console")->info("git revision: {}", app_git_revision());
-					spdlog::get("console")->info("compiled @ {}", app_compile_date());
-					spdlog::get("console")->info("compiler version: {}", app_compiler_version());
-					spdlog::get("console")->info("compiler flags: {}", app_compile_flags());
-					spdlog::get("console")->info("linker flags: {}", app_linker_flags());
+				if (result.count("verbose") != 0u) {
+					spdlog::get("console")->info("git branch: {}", appGitBranch());
+					spdlog::get("console")->info("git revision: {}", appGitRevision());
+					spdlog::get("console")->info("compiled @ {}", appCompileDate());
+					spdlog::get("console")->info("compiler version: {}", appCompilerVersion());
+					spdlog::get("console")->info("compiler flags: {}", appCompileFlags());
+					spdlog::get("console")->info("linker flags: {}", appLinkerFlags());
 				}
 
 				return EXIT_SUCCESS;
 			}
 
-			if(daemon) {
+			if (daemon) {
 				#ifdef ENABLE_SYSTEMD_STATUS
 				if(systemd_logger->sinks().size() > 1)
 					systemd_logger->sinks().erase(systemd_logger->sinks().begin());
@@ -235,61 +235,61 @@ int main(int argc, char **argv){
 				spdlog::info("start daemonized");
 			}
 
-			if(result.count("suppress_syslog")) {
+			if (result.count("suppress_syslog") != 0u) {
 				#ifdef ENABLE_SYSTEMD_STATUS
 				if(systemd_logger->sinks().size() > 1)
 					systemd_logger->sinks().erase(systemd_logger->sinks().begin());
 				#endif
 			}
 
-			if(result.count("config")) {
+			if (result.count("config") != 0u) {
 				config_path = result["config"].as<std::string>();
 				spdlog::info("using configuration file: {}", config_path);
 			}
 
-			if(result.count("verbose")) {
+			if (result.count("verbose") != 0u) {
 				spdlog::set_level(spdlog::level::debug);
 				spdlog::info("verbose output enabled");
 			}
 
-			if(result.count("verbose") > 1) {
+			if (result.count("verbose") > 1) {
 				spdlog::set_level(spdlog::level::trace);
 				spdlog::info("trace output enabled");
 			}
 
-			if(result.count("password")) {
+			if (result.count("password") != 0u) {
 				password = bestsens::netHelper::sha512(result["password"].as<std::string>());
 			}
 
-			if(skip_bemos) {
+			if (skip_bemos) {
 				spdlog::info("don't use bemos");
 			}
-		} catch(const std::exception& e) {
+		} catch (const std::exception& e) {
 			spdlog::get("console")->error(e.what());
 			return EXIT_FAILURE;
 		}
 	}
 
-	spdlog::info("starting bemos-modbus-client {}", app_version());
+	spdlog::info("starting bemos-modbus-client {}", appVersion());
 
 	/*
 	 * Test IEEE 754
 	 */
-	if(!std::numeric_limits<float>::is_iec559)
+	if (!std::numeric_limits<float>::is_iec559)
 		spdlog::warn("application wasn't compiled with IEEE 754 standard, floating point values may be out of standard");
 
 	/*
 	 * open socket
 	 */
-	bestsens::jsonNetHelper* socket = nullptr;
+	std::unique_ptr<bestsens::jsonNetHelper> socket{};
 
-	if(!skip_bemos) {	
-		socket = new bestsens::jsonNetHelper(conn_target, conn_port);
+	if (!skip_bemos) {
+		socket = std::make_unique<bestsens::jsonNetHelper>(conn_target, conn_port);
 
 		/*
 		 * connect to socket
 		 */
-		if(socket->connect()) {
+		if (socket->connect() != 0) {
 			spdlog::critical("connection to BeMoS failed");
 			return EXIT_FAILURE;
 		}
@@ -297,7 +297,7 @@ int main(int argc, char **argv){
 		/*
 		 * login
 		 */
-		if(!socket->login(username, password)) {
+		if (socket->login(username, password) == 0) {
 			spdlog::critical("login to bemos failed");
 			return EXIT_FAILURE;
 		}
@@ -311,11 +311,11 @@ int main(int argc, char **argv){
 		std::ifstream file;
 		file.open(config_path);
 		
-		if(file.is_open()) {
+		if (file.is_open()) {
 			std::string str;
 			std::string file_contents;
 
-			while(std::getline(file, str)) {
+			while (std::getline(file, str)) {
 				file_contents += str;
 				file_contents.push_back('\n');
 			}
@@ -324,7 +324,7 @@ int main(int argc, char **argv){
 
 			try {
 				mb_configuration = json::parse(file_contents);
-			} catch(const json::exception& e) {
+			} catch (const json::exception& e) {
 				spdlog::critical("error loading configuration file: {}", e.what());
 				return EXIT_FAILURE;
 			}
@@ -343,7 +343,7 @@ int main(int argc, char **argv){
 	std::string mb_protocol = "tcp";
 	double mb_timeout = 1.0;
 	int mb_update_time = 1000;
-	std::string mb_tcp_target = "";
+	std::string mb_tcp_target;
 	int mb_tcp_port = 502;
 	int function_code = 3;
 	
@@ -358,29 +358,29 @@ int main(int argc, char **argv){
 
 	try {
 		mb_protocol = mb_configuration.at("protocol").get<std::string>();
-	} catch(...) {
+	} catch (...) {
 		mb_protocol = "tcp";
 	}
 
 	try {
 		mb_timeout = mb_configuration.at("timeout").get<double>();
-	} catch(...) {}
+	} catch (...) {}
 
 	try {
 		function_code = mb_configuration.at("function").get<int>();
-	} catch(...) {}
+	} catch (...) {}
 
 	try {
 		mb_update_time = mb_configuration.at("update_time").get<int>();
-	} catch(...) {}
+	} catch (...) {}
 
-	if(mb_protocol.compare("tcp") == 0) {
+	if (mb_protocol == "tcp") {
 		mb_tcp_target = mb_configuration.at("server_address").get<std::string>();
 
 		try {
 			mb_tcp_port = mb_configuration.at("port").get<int>();
-		} catch(...) {}
-	} else if(mb_protocol.compare("rtu") == 0) {
+		} catch (...) {}
+	} else if (mb_protocol == "rtu") {
 		/*
 		 * TODO: Modbus RTU still not tested!
 		 */
@@ -451,15 +451,15 @@ int main(int argc, char **argv){
 		nb_input_registers = max - min + 3; // add three to allow last register to be 4 bytes wide
 		input_register_start = min;
 
-		if(nb_input_registers > 256) {
+		if (nb_input_registers > 256) {
 			spdlog::critical("maximum input register range of 256 reached");
 			return EXIT_FAILURE;
 		}
 	}
 	spdlog::debug("finished parsing configuration file");
 
-	modbus_t *ctx;
-	if(mb_protocol.compare("tcp") == 0) {
+	modbus_t *ctx = nullptr;
+	if (mb_protocol == "tcp") {
 		spdlog::info("connecting to {}:{}", mb_tcp_target, mb_tcp_port);
 		ctx = modbus_new_tcp(mb_tcp_target.c_str(), mb_tcp_port);
 	} else {
@@ -467,7 +467,7 @@ int main(int argc, char **argv){
 		ctx = modbus_new_rtu(mb_rtu_serialport.c_str(), mb_rtu_baud, mb_rtu_parity.front(), mb_rtu_databits, mb_rtu_stopbits);
 	}
 
-	if(!ctx) {
+	if (ctx == nullptr) {
 		spdlog::critical("failed to create modbus context, exiting");
 		return EXIT_FAILURE;
 	}
@@ -475,7 +475,7 @@ int main(int argc, char **argv){
 	/*
 	 * set modbus slave address
 	 */
-	if(0 != modbus_set_slave(ctx, mb_rtu_slave)) {
+	if (modbus_set_slave(ctx, mb_rtu_slave) != 0) {
 		spdlog::critical("could not set slave address to {}", mb_rtu_slave);
 		return EXIT_FAILURE;
 	}
@@ -483,11 +483,11 @@ int main(int argc, char **argv){
 	/*
 	 * set modbus timeout
 	 */
-	struct timeval mb_timeout_t;
+	struct timeval mb_timeout_t{};
 	mb_timeout_t.tv_sec = static_cast<int>(mb_timeout);
 	mb_timeout_t.tv_usec = static_cast<int>((mb_timeout-floor(mb_timeout)) * 1000000);
 #if (LIBMODBUS_VERSION_CHECK(3, 1, 2))
-	if(modbus_set_response_timeout(ctx, mb_timeout_t.tv_sec, mb_timeout_t.tv_usec) < 0) {
+	if (modbus_set_response_timeout(ctx, mb_timeout_t.tv_sec, mb_timeout_t.tv_usec) < 0) {
 		spdlog::critical("error setting modbus timeout");
 		return EXIT_FAILURE;
 	}
@@ -495,14 +495,14 @@ int main(int argc, char **argv){
 	modbus_set_response_timeout(ctx, &mb_timeout_t);
 #endif
 
-	if(modbus_connect(ctx) == -1) {
+	if (modbus_connect(ctx) == -1) {
 		spdlog::critical("failed to connect to modbus client, exiting");
 		modbus_free(ctx);
 		return EXIT_FAILURE;
 	}
 
 	/* Deamonize */
-	if(daemon) {
+	if (daemon) {
 		bestsens::system_helper::daemonize();
 		spdlog::info("daemon created");
 	} else {
@@ -513,20 +513,20 @@ int main(int argc, char **argv){
 
 	bestsens::system_helper::systemd::ready();
 
-	while(1) {
+	while (true) {
 		bestsens::system_helper::systemd::watchdog();
 		timer.wait_on_tick();
 
-		uint16_t reg[256];
+		std::array<uint16_t, 256> reg{};
 
-		int num;
+		int num = 0;
 
-		if(function_code == 4)
-			num = modbus_read_input_registers(ctx, input_register_start, nb_input_registers, reg);
+		if (function_code == 4)
+			num = modbus_read_input_registers(ctx, input_register_start, nb_input_registers, reg.data());
 		else
-			num = modbus_read_registers(ctx, input_register_start, nb_input_registers, reg);
+			num = modbus_read_registers(ctx, input_register_start, nb_input_registers, reg.data());
 		
-		if(num == -1) {
+		if (num == -1) {
 			spdlog::critical("error reading registers, exiting: {}", modbus_strerror(errno));
 			modbus_close(ctx);
 			modbus_free(ctx);
@@ -535,7 +535,7 @@ int main(int argc, char **argv){
 
 		json attribute_data;
 
-		for(const auto& e : mb_configuration.at("map")) {
+		for (const auto& e : mb_configuration.at("map")) {
 			try {
 				const auto source = e.at("source").get<std::string>();
 				const auto identifier = e.at("identifier").get<std::string>();
@@ -545,34 +545,34 @@ int main(int argc, char **argv){
 				order_t order = order_invalid;
 				try {
 					order = e.at("order").get<order_t>();
-				} catch(...) {
+				} catch (...) {
 					order = order_abcd;
 				}
 
 				double value{};
 
-				switch(register_type) {
-					case type_f32:	value = getValue_f32(reg, address, order); break;
-					case type_i16:	value = getValue_i16(reg, address); break;
-					case type_u16:	value = getValue_u16(reg, address); break;
-					case type_i32:	value = getValue_i32(reg, address); break;
-					case type_u32:	value = getValue_u32(reg, address); break;
-					case type_i64:	value = getValue_i64(reg, address); break;
-					case type_u64:	value = getValue_u64(reg, address); break;
+				switch (register_type) {
+					case type_f32:	value = static_cast<double>(getValueF32(reg.data(), address, order)); break;
+					case type_i16:	value = static_cast<double>(getValueI16(reg.data(), address)); break;
+					case type_u16:	value = static_cast<double>(getValueU16(reg.data(), address)); break;
+					case type_i32:	value = static_cast<double>(getValueI32(reg.data(), address)); break;
+					case type_u32:	value = static_cast<double>(getValueU32(reg.data(), address)); break;
+					case type_i64:	value = static_cast<double>(getValueI64(reg.data(), address)); break;
+					case type_u64:	value = static_cast<double>(getValueU64(reg.data(), address)); break;
 					default: throw std::invalid_argument("register type not available"); break;
 				}
 
 				try {
-					if(e.at("scale").is_number()) {
+					if (e.at("scale").is_number()) {
 						value *= e.at("scale").get<double>();
-					} else if(e.at("scale").is_array()) {
+					} else if (e.at("scale").is_array()) {
 						auto scale = e.at("scale").get<std::array<int, 4>>();
 						value = interpolate(scale.at(0), scale.at(1), value, scale.at(2), scale.at(3));
 					}
-				} catch(...) {}
+				} catch (...) {}
 
 				attribute_data[source][identifier] = value;
-			} catch(const std::exception& err) {
+			} catch (const std::exception& err) {
 				spdlog::error("error getting value: {}", err.what());
 			}
 		}
@@ -586,7 +586,7 @@ int main(int argc, char **argv){
 						{"data", e.value()}
 					};
 
-					if (!socket->send_command("new_data", k, payload))
+					if (socket->send_command("new_data", k, payload) == 0)
 						spdlog::error("error updating algorithm_config");
 				}
 			}
@@ -597,9 +597,6 @@ int main(int argc, char **argv){
 
 	modbus_close(ctx);
 	modbus_free(ctx);
-
-	if(!skip_bemos)
-		delete(socket);
 
 	spdlog::debug("exited");
 

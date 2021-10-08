@@ -3,16 +3,16 @@
 
 #include <string>
 
-auto app_version() -> std::string;
-auto app_git_branch() -> std::string;
-auto app_git_revision() -> std::string;
-auto app_compile_date() -> std::string;
-auto app_compile_flags() -> std::string;
-auto app_linker_flags() -> std::string;
-auto app_compiler_version() -> std::string;
-constexpr auto app_is_dev() -> bool;
+auto appVersion() -> std::string;
+auto appGitBranch() -> std::string;
+auto appGitRevision() -> std::string;
+auto appCompileDate() -> std::string;
+auto appCompileFlags() -> std::string;
+auto appLinkerFlags() -> std::string;
+auto appCompilerVersion() -> std::string;
+constexpr auto appIsDev() -> bool;
 
-constexpr auto app_is_debug() -> bool {
+constexpr auto appIsDebug() -> bool {
 #ifdef DEBUG
 	return true;
 #else
