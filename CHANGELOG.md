@@ -1,3 +1,5 @@
+## 2.0.1 (unreleased)
+
 ## 2.0.0 (12.10.2021)
 - use spdlog as logging library
 - make generic to be used in parallel with configuration files
