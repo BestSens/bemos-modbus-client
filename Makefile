@@ -1,10 +1,17 @@
-CPPFLAGS = -std=c++14 -pthread -MMD -MP -I${SDKTARGETSYSROOT}/usr/include/modbus
+CPPFLAGS = -std=c++14 -pthread -MMD -MP -I${SDKTARGETSYSROOT}/usr/include/modbus \
+			-Iinclude/ -Ilibs/bone_helper/include/ \
+			-Ilibs/json/single_include/ -Ilibs/cxxopts/include/ -Ilibs/spdlog/include/ \
+			-Ilibs/fmt/include/ -DFMT_HEADER_ONLY -DSPDLOG_FMT_EXTERNAL
 LDFLAGS = -lm -lpthread -lcrypto -lmodbus
+
+# Warnings
+CPPFLAGS += -Wall -Wextra -Wpedantic -Wno-missing-field-initializers -Wno-pragmas
 
 ifndef DEBUG
 	CPPFLAGS += -O2 -DNDEBUG
+	LDFLAGS += -s
 else
-	CPPFLAGS += -O1 -DDEBUG -Wall -g -rdynamic -funwind-tables -fno-inline
+	CPPFLAGS += -Og -DDEBUG -g -ggdb3 -rdynamic -funwind-tables -fno-inline
 endif
 
 ifdef APP_VERSION_BRANCH
@@ -15,7 +22,9 @@ ifdef APP_VERSION_GITREV
 	DAPP_VERSION_GITREV = -DAPP_VERSION_GITREV=$(APP_VERSION_GITREV)
 endif
 
-OBJ = bemos_modbus_client.o version.o
+BONE_HELPER_PATH = "libs/bone_helper"
+
+OBJ = bemos_modbus_client.o version.o $(BONE_HELPER_PATH)/bone_helper.a
 BIN = bemos_modbus_client
 
 DEPFILES := $(OBJ:.o=.d)
@@ -44,13 +53,17 @@ gitrev.hpp:
 	@git rev-parse --abbrev-ref HEAD >> $@
 	@echo "#endif" >> $@
 
-version.o: version.cpp gitrev.hpp
+version.o: src/version.cpp gitrev.hpp
 	$(CXX) -c $(CPPFLAGS) $(DAPP_VERSION_BRANCH) $(DAPP_VERSION_GITREV) -DCPPFLAGS="$(CXX) -c $(CPPFLAGS)" -DLDFLAGS="$(LDFLAGS)" $< -o $@
 
-%.o: %.cpp
+%.o: src/%.cpp
 	$(CXX) -c $(CPPFLAGS) $< -o $@
+
+$(BONE_HELPER_PATH)/bone_helper.a:
+	$(MAKE) -C $(BONE_HELPER_PATH) DEBUG=$(DEBUG) MUTE_WARNINGS=true
 
 -include $(DEPFILES)
 
 clean:
 	rm -f $(BIN) $(OBJ) gitrev.hpp compiler_flags
+	$(MAKE) clean -C $(BONE_HELPER_PATH)

@@ -1,6 +1,9 @@
 *.o
 *.d
-bemos_modbus_client
+/bemos_modbus_client
 gitrev.hpp
 *.sublime-workspace
 compiler_flags
+build/
+*.o.tmp
+compile_commands.json
