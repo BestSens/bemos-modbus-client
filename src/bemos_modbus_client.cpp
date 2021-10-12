@@ -20,6 +20,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "bemos_modbus_client/version.hpp"
 #include "cxxopts.hpp"
@@ -48,7 +49,185 @@ namespace {
 								"8f30276b3275fdbb8c60dea4a042c490"
 								"d73168d41cf70f9cdc3e1e62eb43f8e4";
 
-	json mb_configuration; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+	struct mb_config {
+		int nb_input_registers{0};
+		int input_register_start{0};
+		std::string mb_protocol{"tcp"};
+		double mb_timeout{1.0};
+		int mb_update_time{1000};
+		std::string mb_tcp_target;
+		int mb_tcp_port{502};
+		int function_code{3};
+		
+		std::string mb_rtu_serialport{"/dev/ttyS1"};
+		int mb_rtu_baud{9600};
+		char mb_rtu_parity{'N'};
+		int mb_rtu_databits{8};
+		int mb_rtu_stopbits{1};
+		int mb_rtu_slave{1};
+	};
+
+	auto initializeModbusContext(const mb_config& configuration) -> modbus_t* {
+		modbus_t *ctx = nullptr;
+		if (configuration.mb_protocol == "tcp") {
+			spdlog::info("connecting to {}:{}", configuration.mb_tcp_target, configuration.mb_tcp_port);
+			ctx = modbus_new_tcp(configuration.mb_tcp_target.c_str(), configuration.mb_tcp_port);
+		} else {
+			spdlog::info("using {} - {} {}{}{}", configuration.mb_rtu_serialport, configuration.mb_rtu_baud, configuration.mb_rtu_databits, configuration.mb_rtu_parity, configuration.mb_rtu_stopbits);
+			ctx = modbus_new_rtu(configuration.mb_rtu_serialport.c_str(), configuration.mb_rtu_baud, configuration.mb_rtu_parity, configuration.mb_rtu_databits, configuration.mb_rtu_stopbits);
+		}
+
+		if (ctx == nullptr)
+			throw std::runtime_error("failed to create modbus context");
+
+		/*
+		 * set modbus slave address
+		 */
+		if (modbus_set_slave(ctx, configuration.mb_rtu_slave) != 0) {
+			modbus_free(ctx);
+			throw std::runtime_error(fmt::format("could not set slave address to {}", configuration.mb_rtu_slave));
+		}
+
+		/*
+		 * set modbus timeout
+		 */
+		struct timeval mb_timeout_t{};
+		mb_timeout_t.tv_sec = static_cast<int>(configuration.mb_timeout);
+		mb_timeout_t.tv_usec = static_cast<int>((configuration.mb_timeout-floor(configuration.mb_timeout)) * 1000000);
+
+	#if (LIBMODBUS_VERSION_CHECK(3, 1, 2))
+		if (modbus_set_response_timeout(ctx, mb_timeout_t.tv_sec, mb_timeout_t.tv_usec) < 0)
+			throw std::runtime_error("error setting modbus timeout");
+	#else
+		modbus_set_response_timeout(ctx, &mb_timeout_t);
+	#endif
+
+		if (modbus_connect(ctx) == -1) {
+			modbus_free(ctx);
+			throw std::runtime_error("failed to connect to modbus client, exiting");
+		}
+
+		return ctx;
+	}
+
+	auto loadConfigurationFile(const std::string& config_path) -> json {
+		std::ifstream file;
+		file.open(config_path);
+		
+		if (file.is_open()) {
+			std::string str;
+			std::string file_contents;
+
+			while (std::getline(file, str)) {
+				file_contents += str;
+				file_contents.push_back('\n');
+			}
+
+			file.close();
+
+			return json::parse(file_contents);
+		} else {
+			throw std::runtime_error("error opening configuration file");
+		}
+	}
+
+	auto parseConfigurationFile(const json& mb_configuration, std::unique_ptr<bestsens::jsonNetHelper>& socket) -> mb_config {
+		mb_config configuration;
+
+		try {
+			configuration.mb_protocol = mb_configuration.at("protocol").get<std::string>();
+		} catch (...) {
+			configuration.mb_protocol = "tcp";
+		}
+
+		try {
+			configuration.mb_timeout = mb_configuration.at("timeout").get<double>();
+		} catch (...) {}
+
+		try {
+			configuration.function_code = mb_configuration.at("function").get<int>();
+		} catch (...) {}
+
+		try {
+			configuration.mb_update_time = mb_configuration.at("update_time").get<int>();
+		} catch (...) {}
+
+		if (configuration.mb_protocol == "tcp") {
+			configuration.mb_tcp_target = mb_configuration.at("server_address").get<std::string>();
+
+			try {
+				configuration.mb_tcp_port = mb_configuration.at("port").get<int>();
+			} catch (...) {}
+		} else if (configuration.mb_protocol == "rtu") {
+			/*
+			 * TODO: Modbus RTU still not tested!
+			 */
+			configuration.mb_rtu_serialport = mb_configuration.at("serial port").get<std::string>();
+			configuration.mb_rtu_baud = mb_configuration.at("baudrate").get<int>();
+			configuration.mb_rtu_parity = mb_configuration.at("parity").get<std::string>().front();
+			configuration.mb_rtu_databits = mb_configuration.at("databits").get<int>();
+			configuration.mb_rtu_stopbits = mb_configuration.at("stopbits").get<int>();
+			configuration.mb_rtu_slave = mb_configuration.at("slave id").get<int>();
+		} else {
+			throw std::runtime_error("protocol type unknown");
+		}
+
+		std::unordered_set<std::string> sources_to_register;
+		std::vector<int> input_registers;
+		auto data_sources = json::array();
+
+		for (const auto &e : mb_configuration.at("map")) {
+			if (!e.is_null()) {
+				const auto& source = e.at("source").get<std::string>();
+				const auto& identifier = e.at("identifier").get<std::string>();
+				const auto& input_register = e.at("address").get<int>();
+
+				if (e.contains("name") && e.at("name").is_string()) {
+					try {
+						const auto& name = e.at("name").get<std::string>();
+						const auto& unit = e.value("unit", "");
+						const auto& decimals = e.value("decimals", 2);
+
+						json element = {
+							{"name", name},
+							{"source", source},
+							{"identifier", identifier},
+							{"unit", unit},
+							{"decimals", decimals}
+						};
+
+						data_sources.push_back(std::move(element));
+					} catch (...) {}
+				}
+
+				sources_to_register.emplace(source);
+				input_registers.push_back(input_register);
+			}
+		}
+
+		if (socket != nullptr) {
+			for (const auto &e : sources_to_register) {
+				json k;
+				auto this_data_sources = json::array();
+
+				for (const auto& f : data_sources) {
+					try {
+						if (f.at("source").get<std::string>() == e) this_data_sources.push_back(f);
+					} catch (...) {}
+				}
+
+				socket->send_command("register_analysis", k, {{"name", e}, {"data_sources", this_data_sources}});
+			}
+		}
+
+		const auto max = *max_element(std::begin(input_registers), std::end(input_registers));
+		const auto min = *min_element(std::begin(input_registers), std::end(input_registers));
+
+		configuration.nb_input_registers = max - min + 3; // add three to allow last register to be 4 bytes wide
+		configuration.input_register_start = min;
+
+		return configuration;
+	}
 
 	enum order_t { order_abcd, order_cdab, order_badc, order_dcba, order_invalid = -1 };
 	NLOHMANN_JSON_SERIALIZE_ENUM(order_t, { // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
@@ -139,6 +318,72 @@ namespace {
 		return int_from * (1 - (value - from) / (to - from)) + int_to * ((value - from) / (to - from));
 	}
 
+	auto readRegisters(modbus_t* ctx, std::vector<uint16_t>& reg, const mb_config& configuration) -> int {
+		int retval = 0;
+
+		if (configuration.function_code == 4) {
+			retval = modbus_read_input_registers(ctx, configuration.input_register_start,
+												 configuration.nb_input_registers, reg.data());
+		} else {
+			retval = modbus_read_registers(ctx, configuration.input_register_start,
+										   configuration.nb_input_registers, reg.data());
+		}
+
+		if (retval == -1)
+			throw std::runtime_error(fmt::format("error reading registers, exiting: {}", modbus_strerror(errno)));
+		
+		return retval;
+	}
+
+	auto getAttributeData(const json& map, const std::vector<uint16_t> reg, const mb_config& configuration) -> json {
+		json attribute_data;
+
+		for (const auto& e : map) {
+			try {
+				const auto source = e.at("source").get<std::string>();
+				const auto identifier = e.at("identifier").get<std::string>();
+				const auto register_type = e.at("type").get<register_type_t>();
+				const auto address = e.at("address").get<unsigned int>() - configuration.input_register_start;
+
+				const auto order = [&e]() -> order_t {
+					try {
+						return e.at("order").get<order_t>();
+					} catch (...) {}
+
+					return order_abcd;
+				}();
+
+				double value{};
+
+				switch (register_type) {
+					case type_f32:	value = static_cast<double>(getValueF32(reg.data(), address, order)); break;
+					case type_i16:	value = static_cast<double>(getValueI16(reg.data(), address)); break;
+					case type_u16:	value = static_cast<double>(getValueU16(reg.data(), address)); break;
+					case type_i32:	value = static_cast<double>(getValueI32(reg.data(), address)); break;
+					case type_u32:	value = static_cast<double>(getValueU32(reg.data(), address)); break;
+					case type_i64:	value = static_cast<double>(getValueI64(reg.data(), address)); break;
+					case type_u64:	value = static_cast<double>(getValueU64(reg.data(), address)); break;
+					default: throw std::invalid_argument("register type not available"); break;
+				}
+
+				try {
+					if (e.at("scale").is_number()) {
+						value *= e.at("scale").get<double>();
+					} else if (e.at("scale").is_array()) {
+						auto scale = e.at("scale").get<std::array<int, 4>>();
+						value = interpolate(scale.at(0), scale.at(1), value, scale.at(2), scale.at(3));
+					}
+				} catch (...) {}
+
+				attribute_data[source][identifier] = value;
+			} catch (const std::exception& err) {
+				spdlog::error("error getting value: {}", err.what());
+			}
+		}
+
+		return attribute_data;
+	}
+
 	#ifdef ENABLE_SYSTEMD_STATUS
 	auto create_systemd_logger(std::string name = "") {
 		std::vector<spdlog::sink_ptr> sinks;
@@ -152,26 +397,48 @@ namespace {
 		return logger;
 	}
 	#endif
+
+	auto initializeSpdlog(const std::string& application_name) {
+		spdlog::init_thread_pool(8192, 1);
+
+		auto console = spdlog::stdout_color_mt<spdlog::async_factory>("console");
+		console->set_pattern("%v");
+
+		#ifdef ENABLE_SYSTEMD_STATUS
+		auto create_systemd_logger = [](std::string name) {
+			std::vector<spdlog::sink_ptr> sinks;
+			sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_st>());
+			sinks.push_back(std::make_shared<spdlog::sinks::systemd_sink_st>());
+
+			sinks[1]->set_pattern("%v");
+
+			auto logger = std::make_shared<spdlog::async_logger>(name, begin(sinks), end(sinks), spdlog::thread_pool(), spdlog::async_overflow_policy::overrun_oldest);
+			spdlog::register_logger(logger);
+			return logger;
+		};
+
+		auto systemd_logger = create_systemd_logger(application_name);
+		systemd_logger->flush_on(spdlog::level::err); 
+		spdlog::set_default_logger(systemd_logger);
+		auto default_logger = systemd_logger;
+		#else
+		auto stdout_logger = spdlog::stdout_color_mt<spdlog::async_factory>(application_name);
+		stdout_logger->flush_on(spdlog::level::err); 
+		spdlog::set_default_logger(stdout_logger);
+		auto default_logger = stdout_logger;
+		#endif
+
+		spdlog::flush_every(std::chrono::seconds(5));
+
+		return default_logger;
+	}
 }
 
-auto main(int argc, char **argv) -> int{
+auto main(int argc, char **argv) -> int {
 	bool daemon = false;
 	bool skip_bemos = false;
 
-	auto console = spdlog::stdout_color_mt<spdlog::async_factory>("console");
-	console->set_pattern("%v");
-
-	#ifdef ENABLE_SYSTEMD_STATUS
-	auto systemd_logger = create_systemd_logger("bemos_mqtt");
-	systemd_logger->flush_on(spdlog::level::err); 
-	spdlog::set_default_logger(systemd_logger);
-	#else
-	auto stdout_logger = spdlog::stdout_color_mt<spdlog::async_factory>("bemos_mqtt");
-	stdout_logger->flush_on(spdlog::level::err); 
-	spdlog::set_default_logger(stdout_logger);
-	#endif
-
-	spdlog::flush_every(std::chrono::seconds(5));
+	auto default_logger = initializeSpdlog("bemos_modbus_client");
 
 	std::string conn_target = "localhost";
 	std::string conn_port = "6450";
@@ -228,17 +495,17 @@ auto main(int argc, char **argv) -> int{
 
 			if (daemon) {
 				#ifdef ENABLE_SYSTEMD_STATUS
-				if(systemd_logger->sinks().size() > 1)
-					systemd_logger->sinks().erase(systemd_logger->sinks().begin());
+				if(default_logger->sinks().size() > 1)
+					default_logger->sinks().erase(default_logger->sinks().begin());
 				#endif
 
-				spdlog::info("start daemonized");
+				spdlog::info("daemonized");
 			}
 
-			if (result.count("suppress_syslog") != 0u) {
+			if (result.count("suppress_syslog") != 0U) {
 				#ifdef ENABLE_SYSTEMD_STATUS
-				if(systemd_logger->sinks().size() > 1)
-					systemd_logger->sinks().erase(systemd_logger->sinks().begin());
+				if(default_logger->sinks().size() > 1)
+					default_logger->sinks().erase(default_logger->sinks().begin());
 				#endif
 			}
 
@@ -271,6 +538,11 @@ auto main(int argc, char **argv) -> int{
 	}
 
 	spdlog::info("starting bemos-modbus-client {}", appVersion());
+
+	if (config_path.empty()) {
+		spdlog::error("configuration path not set");
+		return EXIT_FAILURE;
+	}
 
 	/*
 	 * Test IEEE 754
@@ -307,199 +579,14 @@ auto main(int argc, char **argv) -> int{
 	 * read configuration file
 	 */
 	spdlog::debug("opening configuration file...");
-	{
-		std::ifstream file;
-		file.open(config_path);
-		
-		if (file.is_open()) {
-			std::string str;
-			std::string file_contents;
-
-			while (std::getline(file, str)) {
-				file_contents += str;
-				file_contents.push_back('\n');
-			}
-
-			file.close();
-
-			try {
-				mb_configuration = json::parse(file_contents);
-			} catch (const json::exception& e) {
-				spdlog::critical("error loading configuration file: {}", e.what());
-				return EXIT_FAILURE;
-			}
-		} else {
-			spdlog::critical("error opening configuration file");
-			return EXIT_FAILURE;
-		}
-	}
-
-	/*
-	 * check all defined sources and add register them
-	 * also determine required address range
-	 */
-	int nb_input_registers = 0;
-	int input_register_start = 0;
-	std::string mb_protocol = "tcp";
-	double mb_timeout = 1.0;
-	int mb_update_time = 1000;
-	std::string mb_tcp_target;
-	int mb_tcp_port = 502;
-	int function_code = 3;
+	const auto mb_configuration = loadConfigurationFile(config_path);
 	
-	std::string mb_rtu_serialport = "/dev/ttyS1";
-	int mb_rtu_baud = 9600;
-	std::string mb_rtu_parity = "N";
-	int mb_rtu_databits = 8;
-	int mb_rtu_stopbits = 1;
-	int mb_rtu_slave = 1;
-
 	spdlog::debug("parsing configuration file...");
-
-	try {
-		mb_protocol = mb_configuration.at("protocol").get<std::string>();
-	} catch (...) {
-		mb_protocol = "tcp";
-	}
-
-	try {
-		mb_timeout = mb_configuration.at("timeout").get<double>();
-	} catch (...) {}
-
-	try {
-		function_code = mb_configuration.at("function").get<int>();
-	} catch (...) {}
-
-	try {
-		mb_update_time = mb_configuration.at("update_time").get<int>();
-	} catch (...) {}
-
-	if (mb_protocol == "tcp") {
-		mb_tcp_target = mb_configuration.at("server_address").get<std::string>();
-
-		try {
-			mb_tcp_port = mb_configuration.at("port").get<int>();
-		} catch (...) {}
-	} else if (mb_protocol == "rtu") {
-		/*
-		 * TODO: Modbus RTU still not tested!
-		 */
-		mb_rtu_serialport = mb_configuration.at("serial port").get<std::string>();
-		mb_rtu_baud = mb_configuration.at("baudrate").get<int>();
-		mb_rtu_parity = mb_configuration.at("parity").get<std::string>();
-		mb_rtu_databits = mb_configuration.at("databits").get<int>();
-		mb_rtu_stopbits = mb_configuration.at("stopbits").get<int>();
-		mb_rtu_slave = mb_configuration.at("slave id").get<int>();
-	} else {
-		spdlog::critical("protocol type unknown");
-		return EXIT_FAILURE;
-	}
-
-
-	{
-		std::unordered_set<std::string> sources_to_register;
-		std::vector<int> input_registers;
-		auto data_sources = json::array();
-
-		for (const auto &e : mb_configuration.at("map")) {
-			if (!e.is_null()) {
-				const auto& source = e.at("source").get<std::string>();
-				const auto& identifier = e.at("identifier").get<std::string>();
-				const auto& input_register = e.at("address").get<int>();
-
-				if (e.contains("name") && e.at("name").is_string()) {
-					try {
-						const auto& name = e.at("name").get<std::string>();
-						const auto& unit = e.value("unit", "");
-						const auto& decimals = e.value("decimals", 2);
-
-						json element = {
-							{"name", name},
-							{"source", source},
-							{"identifier", identifier},
-							{"unit", unit},
-							{"decimals", decimals}
-						};
-
-						data_sources.push_back(std::move(element));
-					} catch (...) {}
-				}
-
-				sources_to_register.emplace(source);
-				input_registers.push_back(input_register);
-			}
-		}
-
-		if (!skip_bemos) {
-			for (const auto &e : sources_to_register) {
-				json k;
-				auto this_data_sources = json::array();
-
-				for (const auto& f : data_sources) {
-					try {
-						if (f.at("source").get<std::string>() == e) this_data_sources.push_back(f);
-					} catch (...) {}
-				}
-
-				socket->send_command("register_analysis", k, {{"name", e}, {"data_sources", this_data_sources}});
-			}
-		}
-
-		int max = *max_element(std::begin(input_registers), std::end(input_registers));
-		int min = *min_element(std::begin(input_registers), std::end(input_registers));
-
-		nb_input_registers = max - min + 3; // add three to allow last register to be 4 bytes wide
-		input_register_start = min;
-
-		if (nb_input_registers > 256) {
-			spdlog::critical("maximum input register range of 256 reached");
-			return EXIT_FAILURE;
-		}
-	}
+	const auto configuration = parseConfigurationFile(mb_configuration, socket);
 	spdlog::debug("finished parsing configuration file");
 
-	modbus_t *ctx = nullptr;
-	if (mb_protocol == "tcp") {
-		spdlog::info("connecting to {}:{}", mb_tcp_target, mb_tcp_port);
-		ctx = modbus_new_tcp(mb_tcp_target.c_str(), mb_tcp_port);
-	} else {
-		spdlog::info("using {} - {} {}{}{}", mb_rtu_serialport, mb_rtu_baud, mb_rtu_databits, mb_rtu_parity.front(), mb_rtu_stopbits);
-		ctx = modbus_new_rtu(mb_rtu_serialport.c_str(), mb_rtu_baud, mb_rtu_parity.front(), mb_rtu_databits, mb_rtu_stopbits);
-	}
-
-	if (ctx == nullptr) {
-		spdlog::critical("failed to create modbus context, exiting");
-		return EXIT_FAILURE;
-	}
-
-	/*
-	 * set modbus slave address
-	 */
-	if (modbus_set_slave(ctx, mb_rtu_slave) != 0) {
-		spdlog::critical("could not set slave address to {}", mb_rtu_slave);
-		return EXIT_FAILURE;
-	}
-
-	/*
-	 * set modbus timeout
-	 */
-	struct timeval mb_timeout_t{};
-	mb_timeout_t.tv_sec = static_cast<int>(mb_timeout);
-	mb_timeout_t.tv_usec = static_cast<int>((mb_timeout-floor(mb_timeout)) * 1000000);
-#if (LIBMODBUS_VERSION_CHECK(3, 1, 2))
-	if (modbus_set_response_timeout(ctx, mb_timeout_t.tv_sec, mb_timeout_t.tv_usec) < 0) {
-		spdlog::critical("error setting modbus timeout");
-		return EXIT_FAILURE;
-	}
-#else
-	modbus_set_response_timeout(ctx, &mb_timeout_t);
-#endif
-
-	if (modbus_connect(ctx) == -1) {
-		spdlog::critical("failed to connect to modbus client, exiting");
-		modbus_free(ctx);
-		return EXIT_FAILURE;
-	}
+	std::vector<uint16_t> reg(configuration.nb_input_registers);
+	auto *ctx = initializeModbusContext(configuration);
 
 	/* Deamonize */
 	if (daemon) {
@@ -509,7 +596,7 @@ auto main(int argc, char **argv) -> int{
 		spdlog::debug("skipped daemonizing");
 	}
 
-	bestsens::loopTimer timer(std::chrono::milliseconds(mb_update_time), 0);
+	bestsens::loopTimer timer(std::chrono::milliseconds(configuration.mb_update_time), 0);
 
 	bestsens::system_helper::systemd::ready();
 
@@ -517,67 +604,11 @@ auto main(int argc, char **argv) -> int{
 		bestsens::system_helper::systemd::watchdog();
 		timer.wait_on_tick();
 
-		std::array<uint16_t, 256> reg{};
+		readRegisters(ctx, reg, configuration);
 
-		int num = 0;
+		const auto attribute_data = getAttributeData(mb_configuration.at("map"), reg, configuration);
 
-		if (function_code == 4)
-			num = modbus_read_input_registers(ctx, input_register_start, nb_input_registers, reg.data());
-		else
-			num = modbus_read_registers(ctx, input_register_start, nb_input_registers, reg.data());
-		
-		if (num == -1) {
-			spdlog::critical("error reading registers, exiting: {}", modbus_strerror(errno));
-			modbus_close(ctx);
-			modbus_free(ctx);
-			return EXIT_FAILURE;
-		}
-
-		json attribute_data;
-
-		for (const auto& e : mb_configuration.at("map")) {
-			try {
-				const auto source = e.at("source").get<std::string>();
-				const auto identifier = e.at("identifier").get<std::string>();
-				const auto register_type = e.at("type").get<register_type_t>();
-				const auto address = e.at("address").get<unsigned int>() - input_register_start;
-
-				order_t order = order_invalid;
-				try {
-					order = e.at("order").get<order_t>();
-				} catch (...) {
-					order = order_abcd;
-				}
-
-				double value{};
-
-				switch (register_type) {
-					case type_f32:	value = static_cast<double>(getValueF32(reg.data(), address, order)); break;
-					case type_i16:	value = static_cast<double>(getValueI16(reg.data(), address)); break;
-					case type_u16:	value = static_cast<double>(getValueU16(reg.data(), address)); break;
-					case type_i32:	value = static_cast<double>(getValueI32(reg.data(), address)); break;
-					case type_u32:	value = static_cast<double>(getValueU32(reg.data(), address)); break;
-					case type_i64:	value = static_cast<double>(getValueI64(reg.data(), address)); break;
-					case type_u64:	value = static_cast<double>(getValueU64(reg.data(), address)); break;
-					default: throw std::invalid_argument("register type not available"); break;
-				}
-
-				try {
-					if (e.at("scale").is_number()) {
-						value *= e.at("scale").get<double>();
-					} else if (e.at("scale").is_array()) {
-						auto scale = e.at("scale").get<std::array<int, 4>>();
-						value = interpolate(scale.at(0), scale.at(1), value, scale.at(2), scale.at(3));
-					}
-				} catch (...) {}
-
-				attribute_data[source][identifier] = value;
-			} catch (const std::exception& err) {
-				spdlog::error("error getting value: {}", err.what());
-			}
-		}
-
-		if (!skip_bemos) {
+		if (socket != nullptr) {
 			for (const auto &e : attribute_data.items()) {
 				if (!e.value().is_null()) {
 					json k;
