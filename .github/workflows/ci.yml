@@ -68,7 +68,8 @@ jobs:
           cmake .. -GNinja \
               -DGIT_BRANCH=${{ github.head_ref }} \
               -DGIT_COMMIT_HASH=${{ github.sha }} \
-              -DCPM_SOURCE_CACHE=../.cache/CPM
+              -DCPM_SOURCE_CACHE=../.cache/CPM \
+              -DBUILD_TESTS=OFF
           samu
       - name: Clean up hierachy
         run: |
