@@ -35,6 +35,7 @@
 #include "spdlog/sinks/systemd_sink.h"
 #endif
 
+#include "bone_helper/customTypeTraits.hpp"
 #include "bone_helper/loopTimer.hpp"
 #include "bone_helper/netHelper.hpp"
 #include "bone_helper/system_helper.hpp"
@@ -96,7 +97,8 @@ namespace {
 		mb_timeout_t.tv_usec = static_cast<int>((configuration.mb_timeout-floor(configuration.mb_timeout)) * 1000000);
 
 	#if (LIBMODBUS_VERSION_CHECK(3, 1, 2))
-		if (modbus_set_response_timeout(ctx, mb_timeout_t.tv_sec, mb_timeout_t.tv_usec) < 0)
+		if (modbus_set_response_timeout(ctx, static_cast<uint32_t>(mb_timeout_t.tv_sec),
+										static_cast<uint32_t>(mb_timeout_t.tv_usec)) < 0)
 			throw std::runtime_error("error setting modbus timeout");
 	#else
 		modbus_set_response_timeout(ctx, &mb_timeout_t);
@@ -131,7 +133,7 @@ namespace {
 		}
 	}
 
-	auto parseConfigurationFile(const json& mb_configuration, std::unique_ptr<bestsens::jsonNetHelper>& socket) -> mb_config {
+	auto parseConfigurationFile(const json& mb_configuration, std::unique_ptr<bestsens::netHelper>& socket) -> mb_config {
 		mb_config configuration;
 
 		try {
@@ -251,8 +253,9 @@ namespace {
 	})
 
 	auto getValueU16(const uint16_t* start, uint16_t offset) -> uint16_t {
-		if(start + offset == nullptr)
+		if (start == nullptr) {
 			throw std::invalid_argument("out of bounds");
+		}
 
 		return start[offset];
 	}
@@ -297,8 +300,9 @@ namespace {
 	}
 
 	auto getValueF32(const uint16_t* start, uint16_t offset, const order_t order) -> float {
-		if(start + offset == nullptr)
+		if (start == nullptr) {
 			throw std::invalid_argument("out of bounds");
+		}
 
 		float output = NAN;
 
@@ -315,7 +319,9 @@ namespace {
 
 	template<typename NumericType = uint16_t>
 	auto interpolate(double from, double to, double value, NumericType int_from, NumericType int_to) -> NumericType {
-		return int_from * (1 - (value - from) / (to - from)) + int_to * ((value - from) / (to - from));
+		return static_cast<NumericType>(
+			static_cast<double>(int_from) *
+			((1 - (value - from) / (to - from)) + static_cast<double>(int_to) * ((value - from) / (to - from))));
 	}
 
 	auto readRegisters(modbus_t* ctx, std::vector<uint16_t>& reg, const mb_config& configuration) -> int {
@@ -329,9 +335,10 @@ namespace {
 										   configuration.nb_input_registers, reg.data());
 		}
 
-		if (retval == -1)
+		if (retval == -1) {
 			throw std::runtime_error(fmt::format("error reading registers, exiting: {}", modbus_strerror(errno)));
-		
+		}
+
 		return retval;
 	}
 
@@ -343,7 +350,8 @@ namespace {
 				const auto source = e.at("source").get<std::string>();
 				const auto identifier = e.at("identifier").get<std::string>();
 				const auto register_type = e.at("type").get<register_type_t>();
-				const auto address = e.at("address").get<unsigned int>() - configuration.input_register_start;
+				const auto address =
+					coerceCast<uint16_t>(e.at("address").get<int>() - configuration.input_register_start);
 
 				const auto order = [&e]() -> order_t {
 					try {
@@ -383,20 +391,6 @@ namespace {
 
 		return attribute_data;
 	}
-
-	#ifdef ENABLE_SYSTEMD_STATUS
-	auto create_systemd_logger(std::string name = "") {
-		std::vector<spdlog::sink_ptr> sinks;
-		sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_st>());
-		sinks.push_back(std::make_shared<spdlog::sinks::systemd_sink_st>());
-
-		sinks[1]->set_pattern("%v");
-
-		auto logger = std::make_shared<spdlog::async_logger>(name, begin(sinks), end(sinks), spdlog::thread_pool(), spdlog::async_overflow_policy::overrun_oldest);
-		spdlog::register_logger(logger);
-		return logger;
-	}
-	#endif
 
 	auto initializeSpdlog(const std::string& application_name) {
 		spdlog::init_thread_pool(8192, 1);
@@ -486,8 +480,6 @@ auto main(int argc, char **argv) -> int {
 					spdlog::get("console")->info("git revision: {}", appGitRevision());
 					spdlog::get("console")->info("compiled @ {}", appCompileDate());
 					spdlog::get("console")->info("compiler version: {}", appCompilerVersion());
-					spdlog::get("console")->info("compiler flags: {}", appCompileFlags());
-					spdlog::get("console")->info("linker flags: {}", appLinkerFlags());
 				}
 
 				return EXIT_SUCCESS;
@@ -553,10 +545,10 @@ auto main(int argc, char **argv) -> int {
 	/*
 	 * open socket
 	 */
-	std::unique_ptr<bestsens::jsonNetHelper> socket{};
+	std::unique_ptr<bestsens::netHelper> socket{};
 
 	if (!skip_bemos) {
-		socket = std::make_unique<bestsens::jsonNetHelper>(conn_target, conn_port);
+		socket = std::make_unique<bestsens::netHelper>(conn_target, conn_port);
 
 		/*
 		 * connect to socket
