@@ -1,4 +1,4 @@
-## 2.1.0 (unreleased)
+## 2.1.0 (18.02.2025)
 - restructure for new build toolchain
 - fix crash on empty map in configuration file
 - update nlohmann/json library to v3.11.3 (https://github.com/nlohmann/json/releases/tag/v3.11.3)
