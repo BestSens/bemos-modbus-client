@@ -1,3 +1,11 @@
+## 2.1.0 (18.02.2025)
+- restructure for new build toolchain
+- fix crash on empty map in configuration file
+- update nlohmann/json library to v3.11.3 (https://github.com/nlohmann/json/releases/tag/v3.11.3)
+- update fmt library to v11.0.2 (https://github.com/fmtlib/fmt/releases/tag/11.0.2)
+- update spdlog library to v1.15.0 (https://github.com/gabime/spdlog/releases/tag/v1.15.0)
+- slave id configuration option is now also used with Modbus TCP
+
 ## 2.0.0 (12.10.2021)
 - use spdlog as logging library
 - make generic to be used in parallel with configuration files
