@@ -178,32 +178,32 @@ namespace {
 		std::vector<int> input_registers;
 		auto data_sources = json::array();
 
-		for (const auto &e : mb_configuration.at("map")) {
-			if (!e.is_null()) {
-				const auto& source = e.at("source").get<std::string>();
-				const auto& identifier = e.at("identifier").get<std::string>();
-				const auto& input_register = e.at("address").get<int>();
+		if (mb_configuration.contains("map") && !mb_configuration.at("map").is_array()) {
+			for (const auto& e : mb_configuration.at("map")) {
+				if (!e.is_null()) {
+					const auto& source = e.at("source").get<std::string>();
+					const auto& identifier = e.at("identifier").get<std::string>();
+					const auto& input_register = e.at("address").get<int>();
 
-				if (e.contains("name") && e.at("name").is_string()) {
-					try {
-						const auto& name = e.at("name").get<std::string>();
-						const auto& unit = e.value("unit", "");
-						const auto& decimals = e.value("decimals", 2);
+					if (e.contains("name") && e.at("name").is_string()) {
+						try {
+							const auto& name = e.at("name").get<std::string>();
+							const auto& unit = e.value("unit", "");
+							const auto& decimals = e.value("decimals", 2);
 
-						json element = {
-							{"name", name},
-							{"source", source},
-							{"identifier", identifier},
-							{"unit", unit},
-							{"decimals", decimals}
-						};
+							json element = {{"name", name},
+											{"source", source},
+											{"identifier", identifier},
+											{"unit", unit},
+											{"decimals", decimals}};
 
-						data_sources.push_back(std::move(element));
-					} catch (...) {}
+							data_sources.push_back(std::move(element));
+						} catch (...) {}
+					}
+
+					sources_to_register.emplace(source);
+					input_registers.push_back(input_register);
 				}
-
-				sources_to_register.emplace(source);
-				input_registers.push_back(input_register);
 			}
 		}
 
@@ -222,11 +222,16 @@ namespace {
 			}
 		}
 
-		const auto max = *max_element(std::begin(input_registers), std::end(input_registers));
-		const auto min = *min_element(std::begin(input_registers), std::end(input_registers));
+		if (!input_registers.empty()) {
+			const auto min = *std::ranges::min_element(input_registers); 
+			const auto max = *std::ranges::max_element(input_registers);
 
-		configuration.nb_input_registers = max - min + 3; // add three to allow last register to be 4 bytes wide
-		configuration.input_register_start = min;
+			configuration.nb_input_registers = max - min + 3;  // add three to allow last register to be 4 bytes wide
+			configuration.input_register_start = min;
+		} else {
+			configuration.nb_input_registers = 0;
+			configuration.input_register_start = 0;
+		}
 
 		return configuration;
 	}
