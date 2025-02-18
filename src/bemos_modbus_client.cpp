@@ -12,12 +12,16 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <ranges>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -36,6 +40,7 @@
 #endif
 
 #include "bone_helper/customTypeTraits.hpp"
+#include "bone_helper/jsonHelper.hpp"
 #include "bone_helper/loopTimer.hpp"
 #include "bone_helper/netHelper.hpp"
 #include "bone_helper/system_helper.hpp"
@@ -134,37 +139,20 @@ namespace {
 		}
 	}
 
+	// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 	auto parseConfigurationFile(const json& mb_configuration, std::unique_ptr<bestsens::netHelper>& socket) -> mb_config {
+		using namespace bestsens;
 		mb_config configuration;
 
-		try {
-			configuration.mb_protocol = mb_configuration.at("protocol").get<std::string>();
-		} catch (...) {
-			configuration.mb_protocol = "tcp";
-		}
-
-		try {
-			configuration.mb_timeout = mb_configuration.at("timeout").get<double>();
-		} catch (...) {}
-
-		try {
-			configuration.function_code = mb_configuration.at("function").get<int>();
-		} catch (...) {}
-
-		try {
-			configuration.mb_update_time = mb_configuration.at("update_time").get<int>();
-		} catch (...) {}
-
-		try {
-			configuration.mb_slave = mb_configuration.at("slave id").get<int>();
-		} catch (...) {}
+		configuration.mb_protocol = value_ig_type(mb_configuration, "protocol", "tcp");
+		configuration.mb_timeout = value_ig_type(mb_configuration, "timeout", configuration.mb_timeout);
+		configuration.function_code = value_ig_type(mb_configuration, "function", configuration.function_code);
+		configuration.mb_update_time = value_ig_type(mb_configuration, "update_time", configuration.mb_update_time);
+		configuration.mb_slave = value_ig_type(mb_configuration, "slave id", configuration.mb_slave);
 
 		if (configuration.mb_protocol == "tcp") {
 			configuration.mb_tcp_target = mb_configuration.at("server_address").get<std::string>();
-
-			try {
-				configuration.mb_tcp_port = mb_configuration.at("port").get<int>();
-			} catch (...) {}
+			configuration.mb_tcp_port = value_ig_type(mb_configuration, "port", configuration.mb_tcp_port);
 		} else if (configuration.mb_protocol == "rtu") {
 			/*
 			 * TODO: Modbus RTU still not tested!
@@ -202,7 +190,7 @@ namespace {
 											{"decimals", decimals}};
 
 							data_sources.push_back(std::move(element));
-						} catch (...) {}
+						} catch (...) {}  // NOLINT(bugprone-empty-catch)
 					}
 
 					sources_to_register.emplace(source);
@@ -218,8 +206,10 @@ namespace {
 
 				for (const auto& f : data_sources) {
 					try {
-						if (f.at("source").get<std::string>() == e) this_data_sources.push_back(f);
-					} catch (...) {}
+						if (f.at("source").get<std::string>() == e) {
+							this_data_sources.push_back(f);
+						}
+					} catch (...) {}  // NOLINT(bugprone-empty-catch)
 				}
 
 				socket->send_command("register_analysis", k, {{"name", e}, {"data_sources", this_data_sources}});
@@ -240,8 +230,9 @@ namespace {
 		return configuration;
 	}
 
+	// NOLINTBEGIN
 	enum order_t { order_abcd, order_cdab, order_badc, order_dcba, order_invalid = -1 };
-	NLOHMANN_JSON_SERIALIZE_ENUM(order_t, { // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
+	NLOHMANN_JSON_SERIALIZE_ENUM(order_t, {
 		{order_invalid, nullptr},
 		{order_abcd, "abcd"},
 		{order_cdab, "cdab"},
@@ -250,7 +241,7 @@ namespace {
 	})
 
 	enum register_type_t { type_i16, type_u16, type_i32, type_u32, type_i64, type_u64, type_f32, type_invalid = -1 };
-	NLOHMANN_JSON_SERIALIZE_ENUM(register_type_t, { // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
+	NLOHMANN_JSON_SERIALIZE_ENUM(register_type_t, {
 		{type_invalid, nullptr},
 		{type_i16, "i16"},
 		{type_u16, "u16"},
@@ -260,6 +251,7 @@ namespace {
 		{type_u64, "u64"},
 		{type_f32, "f32"},
 	})
+	// NOLINTEND
 
 	auto getValueU16(const uint16_t* start, uint16_t offset) -> uint16_t {
 		if (start == nullptr) {
@@ -294,7 +286,7 @@ namespace {
 	}
 
 	auto getValueU64(const uint16_t* start, uint16_t offset) -> uint64_t {
-		uint64_t val = getValueU32(start, offset);
+		const uint64_t val = getValueU32(start, offset);
 		return (val << 32u) + getValueU32(start, offset + 2);
 	}
 
@@ -313,17 +305,18 @@ namespace {
 			throw std::invalid_argument("out of bounds");
 		}
 
-		float output = NAN;
-
-		switch(order) {
-			default: throw std::invalid_argument("unknown byte order"); break;
-			case order_abcd: output = modbus_get_float_abcd(start + offset); break;
-			case order_cdab: output = modbus_get_float_cdab(start + offset); break;
-			case order_badc: output = modbus_get_float_badc(start + offset); break;
-			case order_dcba: output = modbus_get_float_dcba(start + offset); break;
+		switch (order) {
+		default:
+			throw std::invalid_argument("unknown byte order");
+		case order_abcd:
+			return modbus_get_float_abcd(start + offset);
+		case order_cdab:
+			return modbus_get_float_cdab(start + offset);
+		case order_badc:
+			return modbus_get_float_badc(start + offset);
+		case order_dcba:
+			return modbus_get_float_dcba(start + offset);
 		}
-
-		return output;
 	}
 
 	template<typename NumericType = uint16_t>
@@ -351,7 +344,7 @@ namespace {
 		return retval;
 	}
 
-	auto getAttributeData(const json& map, const std::vector<uint16_t> reg, const mb_config& configuration) -> json {
+	auto getAttributeData(const json& map, const std::vector<uint16_t>& reg, const mb_config& configuration) -> json {
 		json attribute_data;
 
 		for (const auto& e : map) {
@@ -365,7 +358,7 @@ namespace {
 				const auto order = [&e]() -> order_t {
 					try {
 						return e.at("order").get<order_t>();
-					} catch (...) {}
+					} catch (...) {}  // NOLINT(bugprone-empty-catch)
 
 					return order_abcd;
 				}();
@@ -390,7 +383,7 @@ namespace {
 						auto scale = e.at("scale").get<std::array<int, 4>>();
 						value = interpolate(scale.at(0), scale.at(1), value, scale.at(2), scale.at(3));
 					}
-				} catch (...) {}
+				} catch (...) {}  // NOLINT(bugprone-empty-catch)
 
 				attribute_data[source][identifier] = value;
 			} catch (const std::exception& err) {
@@ -597,7 +590,7 @@ auto main(int argc, char **argv) -> int {
 		spdlog::debug("skipped daemonizing");
 	}
 
-	bestsens::loopTimer timer(std::chrono::milliseconds(configuration.mb_update_time), 0);
+	bestsens::loopTimer timer(std::chrono::milliseconds(configuration.mb_update_time), false);
 
 	bestsens::system_helper::systemd::ready();
 
@@ -607,7 +600,8 @@ auto main(int argc, char **argv) -> int {
 
 		readRegisters(ctx, reg, configuration);
 
-		const auto attribute_data = getAttributeData(mb_configuration.at("map"), reg, configuration);
+		const auto& map = mb_configuration.at("map");
+		const auto attribute_data = getAttributeData(map, reg, configuration);
 
 		if (socket != nullptr) {
 			for (const auto &e : attribute_data.items()) {
@@ -618,8 +612,9 @@ auto main(int argc, char **argv) -> int {
 						{"data", e.value()}
 					};
 
-					if (socket->send_command("new_data", k, payload) == 0)
+					if (socket->send_command("new_data", k, payload) == 0) {
 						spdlog::error("error updating algorithm_config");
+					}
 				}
 			}
 		}
