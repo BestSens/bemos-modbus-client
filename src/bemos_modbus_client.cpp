@@ -65,7 +65,8 @@ namespace {
 		char mb_rtu_parity{'N'};
 		int mb_rtu_databits{8};
 		int mb_rtu_stopbits{1};
-		int mb_rtu_slave{1};
+
+		int mb_slave{1};
 	};
 
 	auto initializeModbusContext(const mb_config& configuration) -> modbus_t* {
@@ -84,9 +85,9 @@ namespace {
 		/*
 		 * set modbus slave address
 		 */
-		if (modbus_set_slave(ctx, configuration.mb_rtu_slave) != 0) {
+		if (modbus_set_slave(ctx, configuration.mb_slave) != 0) {
 			modbus_free(ctx);
-			throw std::runtime_error(fmt::format("could not set slave address to {}", configuration.mb_rtu_slave));
+			throw std::runtime_error(fmt::format("could not set slave address to {}", configuration.mb_slave));
 		}
 
 		/*
@@ -154,6 +155,10 @@ namespace {
 			configuration.mb_update_time = mb_configuration.at("update_time").get<int>();
 		} catch (...) {}
 
+		try {
+			configuration.mb_slave = mb_configuration.at("slave id").get<int>();
+		} catch (...) {}
+
 		if (configuration.mb_protocol == "tcp") {
 			configuration.mb_tcp_target = mb_configuration.at("server_address").get<std::string>();
 
@@ -169,7 +174,6 @@ namespace {
 			configuration.mb_rtu_parity = mb_configuration.at("parity").get<std::string>().front();
 			configuration.mb_rtu_databits = mb_configuration.at("databits").get<int>();
 			configuration.mb_rtu_stopbits = mb_configuration.at("stopbits").get<int>();
-			configuration.mb_rtu_slave = mb_configuration.at("slave id").get<int>();
 		} else {
 			throw std::runtime_error("protocol type unknown");
 		}

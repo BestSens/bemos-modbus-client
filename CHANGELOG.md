@@ -1,6 +1,7 @@
 ## 2.1.0 (unreleased)
 - restructure for new build toolchain
 - fix crash on empty map in configuration file
+- slave id configuration option is now also used with Modbus TCP
 
 ## 2.0.0 (12.10.2021)
 - use spdlog as logging library
