@@ -1,3 +1,5 @@
+## 2.1.1 (unreleased)
+
 ## 2.1.0 (18.02.2025)
 - restructure for new build toolchain
 - fix crash on empty map in configuration file
