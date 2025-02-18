@@ -1,0 +1,85 @@
+name: Build
+on: [push]
+jobs:
+  arm-bemos-linux-musleabihf:
+    runs-on: ubuntu-latest
+    container: ghcr.io/bestsens/musl-build-image:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup cache
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: |
+            build/
+          key: ${{ runner.os }}-arm
+          restore-keys: ${{ runner.os }}-arm
+      - name: Build
+        env:
+          CCACHE_DIR: .cache/ccache
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -GNinja \
+                    -DGIT_BRANCH=${{ github.head_ref }} \
+                    -DGIT_COMMIT_HASH=${{ github.sha }} \
+                    -DCPM_SOURCE_CACHE=../.cache/CPM \
+                    -DBUILD_TESTS=OFF \
+                    -DCMAKE_TOOLCHAIN_FILE=../libs/bone_helper/cmake/arm-bemos-linux-musleabihf.cmake
+          samu
+      - name: Clean up hierachy
+        run: |
+          cp LICENSE build/LICENSE
+          cp README.md build/README.md
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: armv7
+          path: |
+            build/bemos_modbus_client
+            build/bemos_modbus_client.dbg
+            build/LICENSE
+            build/README.md
+  x86_64-linux-gnu:
+    runs-on: ubuntu-latest
+    container: ghcr.io/bestsens/fedora-build-image:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup cache
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: |
+            build/
+          key: ${{ runner.os }}-linux
+          restore-keys: ${{ runner.os }}-linux
+      - name: Build
+        env:
+          CCACHE_DIR: .cache/ccache
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -GNinja \
+              -DGIT_BRANCH=${{ github.head_ref }} \
+              -DGIT_COMMIT_HASH=${{ github.sha }} \
+              -DCPM_SOURCE_CACHE=../.cache/CPM
+          samu
+      - name: Clean up hierachy
+        run: |
+          cp LICENSE build/LICENSE
+          cp README.md build/README.md
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86_64
+          path: |
+            build/bemos_modbus_client
+            build/bemos_modbus_client.dbg
+            build/LICENSE
+            build/README.md
