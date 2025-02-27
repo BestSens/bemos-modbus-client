@@ -20,11 +20,12 @@ jobs:
       - name: Build
         env:
           CCACHE_DIR: .cache/ccache
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }} 
         run: |
           mkdir -p build
           cd build
           cmake .. -GNinja \
-                    -DGIT_BRANCH=${{ github.head_ref }} \
+                    -DGIT_BRANCH=${BRANCH_NAME} \
                     -DGIT_COMMIT_HASH=${{ github.sha }} \
                     -DCPM_SOURCE_CACHE=../.cache/CPM \
                     -DBUILD_TESTS=OFF \
@@ -62,11 +63,12 @@ jobs:
       - name: Build
         env:
           CCACHE_DIR: .cache/ccache
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }} 
         run: |
           mkdir -p build
           cd build
           cmake .. -GNinja \
-              -DGIT_BRANCH=${{ github.head_ref }} \
+              -DGIT_BRANCH=${BRANCH_NAME} \
               -DGIT_COMMIT_HASH=${{ github.sha }} \
               -DCPM_SOURCE_CACHE=../.cache/CPM \
               -DBUILD_TESTS=OFF
