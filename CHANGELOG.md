@@ -1,3 +1,5 @@
+## 2.1.2 (unreleased)
+
 ## 2.1.1 (27.02.2025)
 - fix configuration file parsing
 
