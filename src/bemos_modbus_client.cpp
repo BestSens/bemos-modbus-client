@@ -170,7 +170,7 @@ namespace {
 		std::vector<int> input_registers;
 		auto data_sources = json::array();
 
-		if (mb_configuration.contains("map") && !mb_configuration.at("map").is_array()) {
+		if (mb_configuration.contains("map") && mb_configuration.at("map").is_array()) {
 			for (const auto& e : mb_configuration.at("map")) {
 				if (!e.is_null()) {
 					const auto& source = e.at("source").get<std::string>();
@@ -328,6 +328,11 @@ namespace {
 
 	auto readRegisters(modbus_t* ctx, std::vector<uint16_t>& reg, const mb_config& configuration) -> int {
 		int retval = 0;
+
+		if (configuration.nb_input_registers == 0) {
+			throw std::runtime_error("no input registers to read");
+			return 0;
+		}
 
 		if (configuration.function_code == 4) {
 			retval = modbus_read_input_registers(ctx, configuration.input_register_start,

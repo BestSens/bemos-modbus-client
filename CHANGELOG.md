@@ -1,3 +1,6 @@
+## 2.1.1 (27.02.2025)
+- fix configuration file parsing
+
 ## 2.1.0 (18.02.2025)
 - restructure for new build toolchain
 - fix crash on empty map in configuration file
